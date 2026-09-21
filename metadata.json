@@ -1,0 +1,6 @@
+{
+  "name": "Church Events",
+  "description": "Multilingual church events and interactive seating reservation system with real-time updates and admin management in Arabic, English, and French.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

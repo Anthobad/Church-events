@@ -1,0 +1,89 @@
+@import "tailwindcss";
+
+/* ==========================================================================
+   CHURCH EVENTS - THEME COLOR VARIABLES & CUSTOMIZATION
+   You can easily change the color theme of the website here!
+   ========================================================================== */
+:root {
+  /* Primary Theme Colors (Deep Church Burgundy & Rich Gold) */
+  --theme-primary: #8b1e2a;
+  --theme-primary-hover: #701520;
+  --theme-primary-light: #fdf2f4;
+  --theme-primary-ring: rgba(139, 30, 42, 0.25);
+
+  /* Accent Gold / Brass */
+  --theme-accent: #c28828;
+  --theme-accent-hover: #a6711c;
+  --theme-accent-light: #fef8eb;
+  --theme-accent-ring: rgba(194, 136, 40, 0.2);
+
+  /* Surface & Base Colors */
+  --theme-surface: rgba(255, 255, 255, 0.94);
+  --theme-surface-hover: #fcfcfd;
+  --theme-surface-solid: #ffffff;
+  --theme-border: #e8eaee;
+  --theme-border-strong: #cbd5e1;
+
+  /* Typography */
+  --theme-text-main: #1c1e21;
+  --theme-text-muted: #596375;
+  --theme-text-subtle: #8994a5;
+
+  /* ==========================================================================
+     CUSTOM BACKGROUND IMAGE:
+     To replace the mosaic with your church's custom background image,
+     simply uncomment the line below and specify your image URL:
+     --church-bg-image: url('https://your-domain.com/church-background.jpg');
+     ========================================================================== */
+  --church-bg-image: none;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  min-height: 100vh;
+  color: var(--theme-text-main);
+  background-color: #18111e;
+  font-family: 'Cairo', 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* RTL / LTR typography adjustments */
+[dir="rtl"] {
+  font-family: 'Cairo', system-ui, sans-serif;
+}
+
+[dir="ltr"] {
+  font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+}
+
+/* Church Mosaic Background Container */
+.church-mosaic-bg {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-color: #18111e;
+  background-image: var(--church-bg-image);
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-attachment: fixed;
+}
+
+/* Hide scrollbars globally across all elements while keeping full scrollability */
+html,
+body,
+* {
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE and Edge */
+}
+
+html::-webkit-scrollbar,
+body::-webkit-scrollbar,
+*::-webkit-scrollbar {
+  display: none; /* Chrome, Safari, Opera */
+  width: 0;
+  height: 0;
+}
