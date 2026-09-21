@@ -1,7 +1,7 @@
 # Supabase Project Configuration
 # Documentation: https://supabase.com/docs/guides/cli/config
 
-project_id = "church-events"
+project_id = "fhieykkrgtgcbujklktd"
 
 [api]
 enabled = true

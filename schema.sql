@@ -54,6 +54,22 @@ ALTER TABLE public.church_events ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.church_registrations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.church_admin_codes ENABLE ROW LEVEL SECURITY;
 
+DO $$
+BEGIN
+  DROP POLICY IF EXISTS "Public read events" ON public.church_events;
+  DROP POLICY IF EXISTS "Public write events" ON public.church_events;
+  DROP POLICY IF EXISTS "Public read registrations" ON public.church_registrations;
+  DROP POLICY IF EXISTS "Public insert registrations" ON public.church_registrations;
+  DROP POLICY IF EXISTS "Public read admin codes" ON public.church_admin_codes;
+  DROP POLICY IF EXISTS "Public write admin codes" ON public.church_admin_codes;
+  DROP POLICY IF EXISTS "Public read profiles" ON public.profiles;
+  DROP POLICY IF EXISTS "Users update own profile" ON public.profiles;
+  DROP POLICY IF EXISTS "Users insert own profile" ON public.profiles;
+  DROP POLICY IF EXISTS "Public event images storage" ON storage.objects;
+EXCEPTION
+  WHEN OTHERS THEN NULL;
+END $$;
+
 -- Allow public viewing and admin event updates
 CREATE POLICY "Public read events" ON public.church_events FOR SELECT USING (true);
 CREATE POLICY "Public write events" ON public.church_events FOR ALL USING (true);
@@ -67,9 +83,20 @@ CREATE POLICY "Public read admin codes" ON public.church_admin_codes FOR SELECT 
 CREATE POLICY "Public write admin codes" ON public.church_admin_codes FOR ALL USING (true);
 
 -- 5. Enable Supabase Realtime so changes update live across screens
-ALTER PUBLICATION supabase_realtime ADD TABLE public.church_events;
-ALTER PUBLICATION supabase_realtime ADD TABLE public.church_registrations;
-ALTER PUBLICATION supabase_realtime ADD TABLE public.church_admin_codes;
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_publication_tables WHERE pubname = 'supabase_realtime' AND tablename = 'church_events') THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.church_events;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_publication_tables WHERE pubname = 'supabase_realtime' AND tablename = 'church_registrations') THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.church_registrations;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_publication_tables WHERE pubname = 'supabase_realtime' AND tablename = 'church_admin_codes') THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.church_admin_codes;
+  END IF;
+EXCEPTION
+  WHEN OTHERS THEN NULL;
+END $$;
 
 -- 6. Storage Bucket for Event Images
 INSERT INTO storage.buckets (id, name, public, file_size_limit)
@@ -125,4 +152,11 @@ CREATE TRIGGER on_auth_user_created
   FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
 
 -- Enable Realtime for profiles
-ALTER PUBLICATION supabase_realtime ADD TABLE public.profiles;
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_publication_tables WHERE pubname = 'supabase_realtime' AND tablename = 'profiles') THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.profiles;
+  END IF;
+EXCEPTION
+  WHEN OTHERS THEN NULL;
+END $$;
