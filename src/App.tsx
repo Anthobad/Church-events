@@ -7,10 +7,14 @@ import {
   getStoredEvents,
   saveStoredEvents,
   deleteStoredEvent,
+  saveSingleEventToSupabase,
+  deleteSingleEventFromSupabase,
   getStoredRegistrations,
   saveStoredRegistrations,
+  saveSingleRegistrationToSupabase,
   getStoredAdminCodes,
   saveStoredAdminCodes,
+  saveSingleCodeToSupabase,
   getUserLikes,
   setUserLikes,
   subscribeToRealtime,
@@ -218,7 +222,9 @@ export default function App() {
       const currentCodes = getStoredAdminCodes();
       const updatedCodes = currentCodes.map((c) => {
         if (c.code === data.codeUsed && c.eventId === data.eventId) {
-          return { ...c, claimed: true, elementId: data.elementId };
+          const claimedCode = { ...c, claimed: true, elementId: data.elementId };
+          saveSingleCodeToSupabase(claimedCode);
+          return claimedCode;
         }
         return c;
       });
@@ -242,6 +248,7 @@ export default function App() {
     const updatedRegistrations = [newRegistration, ...currentRegs];
     saveStoredRegistrations(updatedRegistrations);
     setRegistrations(updatedRegistrations);
+    saveSingleRegistrationToSupabase(newRegistration);
 
     return { success: true, registration: newRegistration };
   };
@@ -273,11 +280,12 @@ export default function App() {
     const updated = [newCodeRecord, ...currentCodes];
     saveStoredAdminCodes(updated);
     setAdminCodes(updated);
+    saveSingleCodeToSupabase(newCodeRecord);
     return newCodeRecord;
   };
 
   // Admin Save / Edit Event
-  const handleSaveEvent = (eventData: ChurchEvent) => {
+  const handleSaveEvent = async (eventData: ChurchEvent) => {
     let updatedEvents: ChurchEvent[];
     const exists = events.some((e) => e.id === eventData.id);
 
@@ -287,6 +295,7 @@ export default function App() {
       updatedEvents = [eventData, ...events];
     }
 
+    // Immediately update UI & local cache
     saveStoredEvents(updatedEvents);
     setEvents(updatedEvents);
     setIsCreatingEvent(false);
@@ -294,21 +303,27 @@ export default function App() {
     if (selectedEvent && selectedEvent.id === eventData.id) {
       setSelectedEvent(eventData);
     }
+
+    // Persist directly to Supabase cloud database
+    await saveSingleEventToSupabase(eventData);
   };
 
   // Admin Delete Event
-  const handleConfirmDelete = () => {
+  const handleConfirmDelete = async () => {
     if (!eventToDelete) return;
-    deleteStoredEvent(eventToDelete.id);
-    const updatedEvents = events.filter((e) => e.id !== eventToDelete.id);
+    const deletedId = eventToDelete.id;
+    deleteStoredEvent(deletedId);
+    await deleteSingleEventFromSupabase(deletedId);
+
+    const updatedEvents = events.filter((e) => e.id !== deletedId);
     setEvents(updatedEvents);
 
     // Clean up related registrations
-    const updatedRegs = registrations.filter((r) => r.eventId !== eventToDelete.id);
+    const updatedRegs = registrations.filter((r) => r.eventId !== deletedId);
     saveStoredRegistrations(updatedRegs);
     setRegistrations(updatedRegs);
 
-    if (selectedEvent && selectedEvent.id === eventToDelete.id) {
+    if (selectedEvent && selectedEvent.id === deletedId) {
       setSelectedEvent(null);
     }
     setEventToDelete(null);

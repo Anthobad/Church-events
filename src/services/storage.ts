@@ -45,196 +45,10 @@ function broadcastUpdate(type: string, payload?: any) {
   }
 }
 
-// Initial Seed Data
-const initialEvents: ChurchEvent[] = [
-  {
-    id: 'event-1',
-    title: 'عشاء المحبة السنوي ورسالة القيامة | Annual Parish Agape Dinner',
-    description: 'ندعو جميع العائلات وأبناء الرعية للمشاركة في عشاء المحبة الأخوي المبارك. يتضمن الحفل كلمة راعي الكنيسة، عروض كورال الأطفال، وتكريم المتطوعين. يرجى التنسيق مع الإدارة لتأكيد الحجز.',
-    imageUrl: 'https://images.unsplash.com/photo-1519671482749-fd09be7ccebf?auto=format&fit=crop&w=800&q=80',
-    date: '2026-04-18',
-    time: '19:30',
-    location: 'قاعة القديس بولس الكبرى - مجمع الكنيسة',
-    type: 'registration_required',
-    isPaid: true,
-    views: 142,
-    likes: 38,
-    createdAt: new Date(Date.now() - 1000 * 60 * 60 * 24 * 3).toISOString(),
-    blueprint: {
-      width: 720,
-      height: 480,
-      perimeterPoints: [
-        { x: 8, y: 8 },
-        { x: 712, y: 8 },
-        { x: 712, y: 472 },
-        { x: 8, y: 472 }
-      ],
-      elements: [
-        { id: 't-1', type: 'table_round', x: 120, y: 110, width: 80, height: 80, label: 'طاولة 1 (VIP)', capacity: 4 },
-        { id: 't-2', type: 'table_round', x: 270, y: 110, width: 80, height: 80, label: 'طاولة 2', capacity: 4 },
-        { id: 't-3', type: 'table_round', x: 420, y: 110, width: 80, height: 80, label: 'طاولة 3', capacity: 4 },
-        { id: 't-4', type: 'table_round', x: 560, y: 110, width: 80, height: 80, label: 'طاولة 4', capacity: 4 },
-        { id: 't-5', type: 'table_rect', x: 150, y: 250, width: 140, height: 80, label: 'طاولة العائلات A', capacity: 6 },
-        { id: 't-6', type: 'table_rect', x: 380, y: 250, width: 140, height: 80, label: 'طاولة العائلات B', capacity: 6 },
-        { id: 't-7', type: 'table_round', x: 200, y: 380, width: 90, height: 90, label: 'طاولة الرعاة', capacity: 8 },
-        { id: 't-8', type: 'table_round', x: 440, y: 380, width: 90, height: 90, label: 'طاولة الشباب', capacity: 8 },
-        { id: 'lbl-stage', type: 'label', x: 350, y: 40, width: 160, height: 30, label: 'منصة التكريم والكورال (Stage)', capacity: 0 }
-      ]
-    }
-  },
-  {
-    id: 'event-2',
-    title: 'أمسية ترانيم جوقة الرجاء الروحية | Choir Recital of Hope',
-    description: 'أمسية صلاة وتأمل تحييها جوقة شبيبة الكنيسة مع تراتيل شرقية وغربية وألحان كنسية تراثية. الدخول مجاني مع ضرورة حجز المقاعد مسبقاً لضمان الأماكن.',
-    imageUrl: 'https://images.unsplash.com/photo-1465847899084-d164df4dedc6?auto=format&fit=crop&w=800&q=80',
-    date: '2026-04-24',
-    time: '18:00',
-    location: 'كنيسة البشارة - الصحن الرئيسي',
-    type: 'registration_required',
-    isPaid: false,
-    views: 215,
-    likes: 64,
-    createdAt: new Date(Date.now() - 1000 * 60 * 60 * 24 * 2).toISOString(),
-    blueprint: {
-      width: 720,
-      height: 480,
-      perimeterPoints: [
-        { x: 8, y: 8 },
-        { x: 712, y: 8 },
-        { x: 712, y: 472 },
-        { x: 8, y: 472 }
-      ],
-      elements: [
-        { id: 'c-a1', type: 'chair', x: 100, y: 130, width: 44, height: 44, label: 'A1', capacity: 1 },
-        { id: 'c-a2', type: 'chair', x: 160, y: 130, width: 44, height: 44, label: 'A2', capacity: 1 },
-        { id: 'c-a3', type: 'chair', x: 220, y: 130, width: 44, height: 44, label: 'A3', capacity: 1 },
-        { id: 'c-a4', type: 'chair', x: 280, y: 130, width: 44, height: 44, label: 'A4', capacity: 1 },
-        { id: 'c-a5', type: 'chair', x: 360, y: 130, width: 44, height: 44, label: 'A5', capacity: 1 },
-        { id: 'c-a6', type: 'chair', x: 420, y: 130, width: 44, height: 44, label: 'A6', capacity: 1 },
-        { id: 'c-a7', type: 'chair', x: 480, y: 130, width: 44, height: 44, label: 'A7', capacity: 1 },
-        { id: 'c-a8', type: 'chair', x: 540, y: 130, width: 44, height: 44, label: 'A8', capacity: 1 },
-
-        { id: 'c-b1', type: 'chair', x: 100, y: 200, width: 44, height: 44, label: 'B1', capacity: 1 },
-        { id: 'c-b2', type: 'chair', x: 160, y: 200, width: 44, height: 44, label: 'B2', capacity: 1 },
-        { id: 'c-b3', type: 'chair', x: 220, y: 200, width: 44, height: 44, label: 'B3', capacity: 1 },
-        { id: 'c-b4', type: 'chair', x: 280, y: 200, width: 44, height: 44, label: 'B4', capacity: 1 },
-        { id: 'c-b5', type: 'chair', x: 360, y: 200, width: 44, height: 44, label: 'B5', capacity: 1 },
-        { id: 'c-b6', type: 'chair', x: 420, y: 200, width: 44, height: 44, label: 'B6', capacity: 1 },
-        { id: 'c-b7', type: 'chair', x: 480, y: 200, width: 44, height: 44, label: 'B7', capacity: 1 },
-        { id: 'c-b8', type: 'chair', x: 540, y: 200, width: 44, height: 44, label: 'B8', capacity: 1 },
-
-        { id: 'c-c1', type: 'chair', x: 100, y: 270, width: 44, height: 44, label: 'C1', capacity: 1 },
-        { id: 'c-c2', type: 'chair', x: 160, y: 270, width: 44, height: 44, label: 'C2', capacity: 1 },
-        { id: 'c-c3', type: 'chair', x: 220, y: 270, width: 44, height: 44, label: 'C3', capacity: 1 },
-        { id: 'c-c4', type: 'chair', x: 280, y: 270, width: 44, height: 44, label: 'C4', capacity: 1 },
-        { id: 'c-c5', type: 'chair', x: 360, y: 270, width: 44, height: 44, label: 'C5', capacity: 1 },
-        { id: 'c-c6', type: 'chair', x: 420, y: 270, width: 44, height: 44, label: 'C6', capacity: 1 },
-        { id: 'c-c7', type: 'chair', x: 480, y: 270, width: 44, height: 44, label: 'C7', capacity: 1 },
-        { id: 'c-c8', type: 'chair', x: 540, y: 270, width: 44, height: 44, label: 'C8', capacity: 1 },
-
-        { id: 'lbl-altar', type: 'label', x: 320, y: 50, width: 220, height: 32, label: 'مذبح الكنيسة ومنصة المرنمين', capacity: 0 }
-      ]
-    }
-  },
-  {
-    id: 'event-3',
-    title: 'الخلوة الروحية السنوية للعائلات | Annual Family Spiritual Retreat',
-    description: 'يوم روحي كامل يتخلله قداس إلهي، محاضرات إرشادية حول التربية المسيحية وتحديات العصر، وبرامج ترفيهية وتعليمية خاصة بالأطفال والناشئة. الدعوة عامة ومفتوحة للجميع.',
-    imageUrl: 'https://images.unsplash.com/photo-1544717305-2782549b5136?auto=format&fit=crop&w=800&q=80',
-    date: '2026-05-02',
-    time: '09:00',
-    location: 'دير مار إلياس - الجبل الأخضر',
-    type: 'open',
-    isPaid: false,
-    views: 98,
-    likes: 29,
-    createdAt: new Date(Date.now() - 1000 * 60 * 60 * 24 * 1).toISOString()
-  },
-  {
-    id: 'event-4',
-    title: 'معرض الرعية الخيري ومهرجان المحبة | Parish Charity Festival',
-    description: 'بازار ريعي يعود ريعه بالكامل لدعم العائلات المستورة والمرضى في رعية الكنيسة. يشمل مأكولات منزلية، أعمال يدوية، كتب، وألعاب وهدايا للأطفال. مفتوح لجميع أبناء المنطقة.',
-    imageUrl: 'https://images.unsplash.com/photo-1511556532299-8f662fc26c06?auto=format&fit=crop&w=800&q=80',
-    date: '2026-05-15',
-    time: '11:00',
-    location: 'ساحة الكنيسة الخارجية والحديقة',
-    type: 'open',
-    isPaid: false,
-    views: 76,
-    likes: 21,
-    createdAt: new Date().toISOString()
-  }
-];
-
-const initialRegistrations: Registration[] = [
-  {
-    id: 'reg-demo-1',
-    eventId: 'event-1',
-    userName: 'عائلة الخوري الياس',
-    userPhone: '+961 70 123456',
-    partySize: 4,
-    elementId: 't-1',
-    elementLabel: 'طاولة 1 (VIP)',
-    isPaid: true,
-    codeUsed: '84920173',
-    registeredAt: new Date(Date.now() - 1000 * 60 * 60 * 5).toISOString()
-  },
-  {
-    id: 'reg-demo-2',
-    eventId: 'event-1',
-    userName: 'عائلة نجار',
-    userPhone: '+961 03 456789',
-    partySize: 3,
-    elementId: 't-5',
-    elementLabel: 'طاولة العائلات A',
-    isPaid: true,
-    codeUsed: '55129481',
-    registeredAt: new Date(Date.now() - 1000 * 60 * 60 * 3).toISOString()
-  },
-  {
-    id: 'reg-demo-3',
-    eventId: 'event-2',
-    userName: 'ماري سركيس',
-    userPhone: '+961 71 889900',
-    partySize: 1,
-    elementId: 'c-a1',
-    elementLabel: 'A1',
-    isPaid: false,
-    registeredAt: new Date(Date.now() - 1000 * 60 * 60 * 2).toISOString()
-  }
-];
-
-const initialCodes: AdminReservationCode[] = [
-  {
-    id: 'code-1',
-    code: '84920173',
-    eventId: 'event-1',
-    userName: 'عائلة الخوري الياس',
-    partySize: 4,
-    claimed: true,
-    elementId: 't-1',
-    createdAt: new Date(Date.now() - 1000 * 60 * 60 * 6).toISOString()
-  },
-  {
-    id: 'code-2',
-    code: '55129481',
-    eventId: 'event-1',
-    userName: 'عائلة نجار',
-    partySize: 3,
-    claimed: true,
-    elementId: 't-5',
-    createdAt: new Date(Date.now() - 1000 * 60 * 60 * 4).toISOString()
-  },
-  {
-    id: 'code-3',
-    code: '19472658',
-    eventId: 'event-1',
-    userName: 'طوني حداد (مدفوع)',
-    partySize: 2,
-    claimed: false,
-    createdAt: new Date().toISOString()
-  }
-];
+// Initial Data (Empty by default: All events and reservations come directly from database)
+const initialEvents: ChurchEvent[] = [];
+const initialRegistrations: Registration[] = [];
+const initialCodes: AdminReservationCode[] = [];
 
 // Helper to get from local storage or seed
 export function eventToRow(event: ChurchEvent) {
@@ -333,6 +147,10 @@ export function rowToCode(row: any): AdminReservationCode {
  * Fetch latest data directly from the Supabase cloud database,
  * store in local cache, and trigger realtime state update.
  */
+/**
+ * Fetch latest data directly from the Supabase cloud database,
+ * store in local cache, and trigger realtime state update.
+ */
 export async function syncFromSupabase(): Promise<boolean> {
   if (!supabase) return false;
   try {
@@ -344,7 +162,7 @@ export async function syncFromSupabase(): Promise<boolean> {
 
     let changed = false;
 
-    if (!eventsRes.error && eventsRes.data && eventsRes.data.length > 0) {
+    if (!eventsRes.error && Array.isArray(eventsRes.data)) {
       const parsedEvents = eventsRes.data.map(rowToEvent);
       if (typeof window !== 'undefined') {
         localStorage.setItem(STORAGE_EVENTS_KEY, JSON.stringify(parsedEvents));
@@ -352,7 +170,7 @@ export async function syncFromSupabase(): Promise<boolean> {
       changed = true;
     }
 
-    if (!regsRes.error && regsRes.data) {
+    if (!regsRes.error && Array.isArray(regsRes.data)) {
       const parsedRegs = regsRes.data.map(rowToRegistration);
       if (typeof window !== 'undefined') {
         localStorage.setItem(STORAGE_REGISTRATIONS_KEY, JSON.stringify(parsedRegs));
@@ -360,7 +178,7 @@ export async function syncFromSupabase(): Promise<boolean> {
       changed = true;
     }
 
-    if (!codesRes.error && codesRes.data) {
+    if (!codesRes.error && Array.isArray(codesRes.data)) {
       const parsedCodes = codesRes.data.map(rowToCode);
       if (typeof window !== 'undefined') {
         localStorage.setItem(STORAGE_CODES_KEY, JSON.stringify(parsedCodes));
@@ -399,33 +217,36 @@ if (typeof window !== 'undefined' && supabase) {
   }
 }
 
+const MOCK_EVENT_IDS = new Set(['event-1', 'event-2', 'event-3', 'event-4']);
+const MOCK_REG_IDS = new Set(['reg-demo-1', 'reg-demo-2', 'reg-demo-3']);
+const MOCK_CODE_IDS = new Set(['code-1', 'code-2', 'code-3']);
+
 export function getStoredEvents(): ChurchEvent[] {
-  if (typeof window === 'undefined') return initialEvents;
+  if (typeof window === 'undefined') return [];
   try {
     const data = localStorage.getItem(STORAGE_EVENTS_KEY);
-    if (!data) {
-      localStorage.setItem(STORAGE_EVENTS_KEY, JSON.stringify(initialEvents));
-      return initialEvents;
-    }
+    if (!data) return [];
     const parsed = JSON.parse(data);
-    if (Array.isArray(parsed) && parsed.length > 0) {
-      return parsed.map((evt: ChurchEvent) => {
-        if (evt.blueprint && (!evt.blueprint.width || evt.blueprint.width < 720)) {
-          return {
-            ...evt,
-            blueprint: {
-              ...evt.blueprint,
-              width: 720,
-              height: evt.blueprint.height || 480
-            }
-          };
-        }
-        return evt;
-      });
+    if (Array.isArray(parsed)) {
+      return parsed
+        .filter((evt: ChurchEvent) => evt && !MOCK_EVENT_IDS.has(evt.id))
+        .map((evt: ChurchEvent) => {
+          if (evt.blueprint && (!evt.blueprint.width || evt.blueprint.width < 720)) {
+            return {
+              ...evt,
+              blueprint: {
+                ...evt.blueprint,
+                width: 720,
+                height: evt.blueprint.height || 480
+              }
+            };
+          }
+          return evt;
+        });
     }
-    return initialEvents;
+    return [];
   } catch (e) {
-    return initialEvents;
+    return [];
   }
 }
 
@@ -436,7 +257,7 @@ export function saveStoredEvents(events: ChurchEvent[]) {
     broadcastUpdate('EVENTS_UPDATED', events);
 
     // Sync to Supabase in background
-    if (supabase) {
+    if (supabase && events.length > 0) {
       const rows = events.map(eventToRow);
       Promise.resolve(supabase.from('church_events').upsert(rows)).catch((err) =>
         console.warn('Supabase event upsert notice:', err)
@@ -444,6 +265,22 @@ export function saveStoredEvents(events: ChurchEvent[]) {
     }
   } catch (e) {
     console.error('Failed to save events to storage', e);
+  }
+}
+
+export async function saveSingleEventToSupabase(event: ChurchEvent): Promise<boolean> {
+  if (!supabase) return false;
+  try {
+    const row = eventToRow(event);
+    const { error } = await supabase.from('church_events').upsert(row);
+    if (error) {
+      console.error('Supabase save event error:', error.message);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.error('Supabase save event exception:', err);
+    return false;
   }
 }
 
@@ -464,17 +301,30 @@ export function deleteStoredEvent(eventId: string) {
   }
 }
 
+export async function deleteSingleEventFromSupabase(eventId: string): Promise<boolean> {
+  if (!supabase) return false;
+  try {
+    const { error } = await supabase.from('church_events').delete().eq('id', eventId);
+    if (error) {
+      console.error('Supabase delete event error:', error.message);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.error('Supabase delete event exception:', err);
+    return false;
+  }
+}
+
 export function getStoredRegistrations(): Registration[] {
-  if (typeof window === 'undefined') return initialRegistrations;
+  if (typeof window === 'undefined') return [];
   try {
     const data = localStorage.getItem(STORAGE_REGISTRATIONS_KEY);
-    if (!data) {
-      localStorage.setItem(STORAGE_REGISTRATIONS_KEY, JSON.stringify(initialRegistrations));
-      return initialRegistrations;
-    }
-    return JSON.parse(data);
+    if (!data) return [];
+    const parsed = JSON.parse(data);
+    return Array.isArray(parsed) ? parsed.filter((r: Registration) => r && !MOCK_REG_IDS.has(r.id)) : [];
   } catch (e) {
-    return initialRegistrations;
+    return [];
   }
 }
 
@@ -484,7 +334,7 @@ export function saveStoredRegistrations(registrations: Registration[]) {
     localStorage.setItem(STORAGE_REGISTRATIONS_KEY, JSON.stringify(registrations));
     broadcastUpdate('REGISTRATIONS_UPDATED', registrations);
 
-    if (supabase) {
+    if (supabase && registrations.length > 0) {
       const rows = registrations.map(registrationToRow);
       Promise.resolve(supabase.from('church_registrations').upsert(rows)).catch((err) =>
         console.warn('Supabase registration upsert notice:', err)
@@ -495,17 +345,31 @@ export function saveStoredRegistrations(registrations: Registration[]) {
   }
 }
 
+export async function saveSingleRegistrationToSupabase(reg: Registration): Promise<boolean> {
+  if (!supabase) return false;
+  try {
+    const row = registrationToRow(reg);
+    const { error } = await supabase.from('church_registrations').upsert(row);
+    if (error) {
+      console.error('Supabase save registration error:', error.message);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.error('Supabase save registration exception:', err);
+    return false;
+  }
+}
+
 export function getStoredAdminCodes(): AdminReservationCode[] {
-  if (typeof window === 'undefined') return initialCodes;
+  if (typeof window === 'undefined') return [];
   try {
     const data = localStorage.getItem(STORAGE_CODES_KEY);
-    if (!data) {
-      localStorage.setItem(STORAGE_CODES_KEY, JSON.stringify(initialCodes));
-      return initialCodes;
-    }
-    return JSON.parse(data);
+    if (!data) return [];
+    const parsed = JSON.parse(data);
+    return Array.isArray(parsed) ? parsed.filter((c: AdminReservationCode) => c && !MOCK_CODE_IDS.has(c.id)) : [];
   } catch (e) {
-    return initialCodes;
+    return [];
   }
 }
 
@@ -515,7 +379,7 @@ export function saveStoredAdminCodes(codes: AdminReservationCode[]) {
     localStorage.setItem(STORAGE_CODES_KEY, JSON.stringify(codes));
     broadcastUpdate('CODES_UPDATED', codes);
 
-    if (supabase) {
+    if (supabase && codes.length > 0) {
       const rows = codes.map(codeToRow);
       Promise.resolve(supabase.from('church_admin_codes').upsert(rows)).catch((err) =>
         console.warn('Supabase admin codes upsert notice:', err)
@@ -524,6 +388,38 @@ export function saveStoredAdminCodes(codes: AdminReservationCode[]) {
   } catch (e) {
     console.error('Failed to save admin codes', e);
   }
+}
+
+export async function saveSingleCodeToSupabase(code: AdminReservationCode): Promise<boolean> {
+  if (!supabase) return false;
+  try {
+    const row = codeToRow(code);
+    const { error } = await supabase.from('church_admin_codes').upsert(row);
+    if (error) {
+      console.error('Supabase save admin code error:', error.message);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.error('Supabase save admin code exception:', err);
+    return false;
+  }
+}
+
+export async function fetchLiveCodesForEvent(eventId: string): Promise<AdminReservationCode[]> {
+  if (!supabase) return getStoredAdminCodes().filter((c) => c.eventId === eventId);
+  try {
+    const { data, error } = await supabase
+      .from('church_admin_codes')
+      .select('*')
+      .eq('event_id', eventId);
+    if (!error && data) {
+      return data.map(rowToCode);
+    }
+  } catch (err) {
+    console.warn('Error fetching live codes:', err);
+  }
+  return getStoredAdminCodes().filter((c) => c.eventId === eventId);
 }
 
 export function getUserLikes(): Record<string, boolean> {

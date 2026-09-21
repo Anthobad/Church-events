@@ -96,16 +96,25 @@ export const AdminSignInModal: React.FC<AdminSignInModalProps> = ({
         onClose();
       } else {
         setIsLoading(false);
-        if (authErrorDetail?.toLowerCase().includes('email not confirmed')) {
+        const detailLower = (authErrorDetail || '').toLowerCase();
+        if (detailLower.includes('email logins are disabled')) {
           setErrorMessage(
             language === 'ar'
-              ? 'حساب المشرف غير مفعل في Supabase'
+              ? 'تسجيل الدخول عبر البريد الإلكتروني معطل في إعدادات Supabase (Authentication ➔ Providers ➔ Email).'
               : language === 'fr'
-              ? 'Compte administrateur en attente d’activation dans Supabase'
-              : 'Admin account requires activation in Supabase'
+              ? 'La connexion par email est désactivée dans Supabase (Authentication ➔ Providers ➔ Email).'
+              : 'Email logins are disabled in your Supabase project (Authentication ➔ Providers ➔ Email).'
+          );
+        } else if (detailLower.includes('email not confirmed')) {
+          setErrorMessage(
+            language === 'ar'
+              ? 'حساب المشرف غير مفعل أو يتطلب تأكيد البريد في Supabase.'
+              : language === 'fr'
+              ? 'Compte administrateur en attente d’activation ou de confirmation dans Supabase.'
+              : 'Admin account requires email confirmation in Supabase.'
           );
         } else {
-          setErrorMessage(t.adminLoginError);
+          setErrorMessage(authErrorDetail ? `${t.adminLoginError} (${authErrorDetail})` : t.adminLoginError);
         }
       }
     } catch (err: any) {

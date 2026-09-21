@@ -7,6 +7,7 @@ import {
   SeatingElement
 } from '../types';
 import { translations } from '../services/i18n';
+import { supabase, rowToCode } from '../services/storage';
 import { BlueprintCanvas } from './BlueprintCanvas';
 import { DigitalTicketModal } from './DigitalTicketModal';
 import {
@@ -101,7 +102,7 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
   const eventCodes = adminCodes.filter((c) => c.eventId === event.id);
 
   // Handle validating 8-digit code
-  const handleVerifyCode = () => {
+  const handleVerifyCode = async () => {
     setErrorMessage(null);
     const cleanCode = eightDigitCodeInput.trim();
     if (cleanCode.length !== 8) {
@@ -109,7 +110,25 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
       return;
     }
 
-    const matchingCode = eventCodes.find((c) => c.code === cleanCode);
+    let matchingCode = eventCodes.find((c) => c.code === cleanCode);
+
+    // If not found in local state, verify against Supabase directly
+    if (!matchingCode && supabase) {
+      try {
+        const { data, error } = await supabase
+          .from('church_admin_codes')
+          .select('*')
+          .eq('code', cleanCode)
+          .eq('event_id', event.id)
+          .maybeSingle();
+        if (!error && data) {
+          matchingCode = rowToCode(data);
+        }
+      } catch (err) {
+        console.warn('Direct code check notice:', err);
+      }
+    }
+
     if (!matchingCode) {
       setErrorMessage(t.invalidCodeError);
       return;
