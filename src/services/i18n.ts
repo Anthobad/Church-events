@@ -71,6 +71,7 @@ export interface Translations {
   conflictError: string;
   invalidCodeError: string;
   codeAlreadyUsedError: string;
+  adminUsername: string;
   adminPassword: string;
   loginBtn: string;
   adminLoginTitle: string;
@@ -236,10 +237,11 @@ export const translations: Record<Language, Translations> = {
     conflictError: 'عذراً! تم حجز هذا المقعد أو الطاولة بواسطة شخص آخر للتو. يرجى اختيار مكان آخر.',
     invalidCodeError: 'الرمز المدخل غير صالح أو غير مخصص لهذه الفعالية. يرجى مراجعة المشرف.',
     codeAlreadyUsedError: 'تم استخدام رمز الحجز هذا مسبقاً ولا يمكن استخدامه مرة أخرى.',
+    adminUsername: 'اسم المستخدم',
     adminPassword: 'كلمة مرور المشرف',
     loginBtn: 'تسجيل الدخول',
     adminLoginTitle: 'دخول لوحة إدارة مناسبات الكنيسة',
-    adminLoginError: 'كلمة المرور غير صحيحة (التجريبية: admin أو church2025)',
+    adminLoginError: 'اسم المستخدم أو كلمة المرور غير صحيحة',
     canvasToolbarPerimeter: 'محيط القاعة',
     canvasPerimeterDrawInstruction: 'انقر على أي جدار أو زر (+) لإضافة زاوية. اسحب النقاط لتعديل الشكل، أو انقر مرتين لحذف نقطة.',
     canvasPerimeterCloseBtn: 'إغلاق وحفظ المحيط',
@@ -399,10 +401,11 @@ export const translations: Record<Language, Translations> = {
     conflictError: 'Notice: This seat was just reserved by someone else. Please select another seat.',
     invalidCodeError: 'Invalid 8-digit code or code not assigned to this event. Please verify with admin.',
     codeAlreadyUsedError: 'This 8-digit code has already been used to reserve seats.',
+    adminUsername: 'Username',
     adminPassword: 'Admin Password',
     loginBtn: 'Sign In',
     adminLoginTitle: 'Church Events Admin Sign In',
-    adminLoginError: 'Invalid password (Default demo: admin or church2025)',
+    adminLoginError: 'Invalid username or password',
     canvasToolbarPerimeter: 'Hall Perimeter',
     canvasPerimeterDrawInstruction: 'Click any wall or (+) to add a corner point. Drag points to reshape, or double-click to delete.',
     canvasPerimeterCloseBtn: 'Close & Save Perimeter',
@@ -562,10 +565,11 @@ export const translations: Record<Language, Translations> = {
     conflictError: 'Attention : cette place vient d’être réservée. Veuillez en sélectionner une autre.',
     invalidCodeError: 'Code à 8 chiffres invalide ou non attribué à cet événement.',
     codeAlreadyUsedError: 'Ce code à 8 chiffres a déjà été utilisé pour une réservation.',
+    adminUsername: "Nom d'utilisateur",
     adminPassword: 'Mot de passe administrateur',
     loginBtn: 'Connexion',
     adminLoginTitle: 'Connexion Administration',
-    adminLoginError: 'Mot de passe incorrect (Démo : admin ou church2025)',
+    adminLoginError: "Nom d'utilisateur ou mot de passe incorrect",
     canvasToolbarPerimeter: 'Périmètre',
     canvasPerimeterDrawInstruction: 'Cliquez sur un mur ou (+) pour ajouter un angle. Glissez pour ajuster, ou double-cliquez pour supprimer.',
     canvasPerimeterCloseBtn: 'Fermer et enregistrer',

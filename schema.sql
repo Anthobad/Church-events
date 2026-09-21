@@ -70,3 +70,68 @@ CREATE POLICY "Public write admin codes" ON public.church_admin_codes FOR ALL US
 ALTER PUBLICATION supabase_realtime ADD TABLE public.church_events;
 ALTER PUBLICATION supabase_realtime ADD TABLE public.church_registrations;
 ALTER PUBLICATION supabase_realtime ADD TABLE public.church_admin_codes;
+
+-- 6. Storage Bucket for Event Images
+INSERT INTO storage.buckets (id, name, public, file_size_limit)
+VALUES ('event-images', 'event-images', true, 5242880)
+ON CONFLICT (id) DO UPDATE SET public = true;
+
+CREATE POLICY "Public event images storage" ON storage.objects FOR ALL USING (bucket_id = 'event-images') WITH CHECK (bucket_id = 'event-images');
+
+-- 7. Provision 1 Admin Account in Supabase Auth
+-- Username: admin (or admin@church.org)
+-- Password: churchAdmin2026!
+CREATE EXTENSION IF NOT EXISTS "pgcrypto";
+
+DO $$
+DECLARE
+  admin_uid UUID := 'a0000000-0000-0000-0000-000000000001'::UUID;
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM auth.users WHERE email = 'admin@church.org') THEN
+    INSERT INTO auth.users (
+      instance_id, id, aud, role, email,
+      encrypted_password, email_confirmed_at,
+      raw_app_meta_data, raw_user_meta_data,
+      created_at, updated_at
+    ) VALUES (
+      '00000000-0000-0000-0000-000000000000',
+      admin_uid,
+      'authenticated',
+      'authenticated',
+      'admin@church.org',
+      crypt('churchAdmin2026!', gen_salt('bf')),
+      NOW(),
+      '{"provider":"email","providers":["email"]}',
+      '{"username":"admin","role":"admin"}',
+      NOW(),
+      NOW()
+    );
+
+    INSERT INTO auth.identities (
+      id, user_id, identity_data, provider, provider_id, last_sign_in_at, created_at, updated_at
+    ) VALUES (
+      admin_uid,
+      admin_uid,
+      json_build_object('sub', admin_uid::text, 'email', 'admin@church.org')::jsonb,
+      'email',
+      admin_uid::text,
+      NOW(),
+      NOW(),
+      NOW()
+    ) ON CONFLICT DO NOTHING;
+  ELSE
+    UPDATE auth.users
+    SET encrypted_password = crypt('churchAdmin2026!', gen_salt('bf')),
+        email_confirmed_at = NOW(),
+        updated_at = NOW()
+    WHERE email = 'admin@church.org';
+  END IF;
+
+  IF EXISTS (SELECT 1 FROM auth.users WHERE email = 'church.admin@gmail.com') THEN
+    UPDATE auth.users
+    SET encrypted_password = crypt('churchAdmin2026!', gen_salt('bf')),
+        email_confirmed_at = NOW(),
+        updated_at = NOW()
+    WHERE email = 'church.admin@gmail.com';
+  END IF;
+END $$;

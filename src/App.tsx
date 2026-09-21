@@ -16,7 +16,8 @@ import {
   subscribeToRealtime,
   generateRandom8DigitCode,
   checkSeatConflict,
-  syncFromSupabase
+  syncFromSupabase,
+  supabase
 } from './services/storage';
 
 import { Header } from './components/Header';
@@ -69,9 +70,25 @@ export default function App() {
 
   useEffect(() => {
     setMounted(true);
-    if (typeof window !== 'undefined' && localStorage.getItem('church_admin_logged_in') === 'true') {
-      setIsAdmin(true);
+
+    // Clean up any legacy localStorage admin bypass
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('church_admin_logged_in');
     }
+
+    // Supabase Auth session tracking
+    let authSubscription: { unsubscribe: () => void } | null = null;
+    if (supabase) {
+      supabase.auth.getSession().then(({ data: { session } }) => {
+        setIsAdmin(Boolean(session?.user));
+      });
+
+      const { data } = supabase.auth.onAuthStateChange((_event, session) => {
+        setIsAdmin(Boolean(session?.user));
+      });
+      authSubscription = data.subscription;
+    }
+
     refreshData();
 
     // Trigger initial background sync from Supabase database if configured
@@ -86,6 +103,9 @@ export default function App() {
 
     return () => {
       unsubscribe();
+      if (authSubscription) {
+        authSubscription.unsubscribe();
+      }
     };
   }, [refreshData]);
 
@@ -95,15 +115,24 @@ export default function App() {
     document.documentElement.dir = language === 'ar' ? 'rtl' : 'ltr';
   }, [language]);
 
-  // Admin login persistence
+  // Admin authentication handlers via Supabase
   const handleAdminSignInSuccess = () => {
     setIsAdmin(true);
-    localStorage.setItem('church_admin_logged_in', 'true');
   };
 
-  const handleAdminSignOut = () => {
-    setIsAdmin(false);
-    localStorage.removeItem('church_admin_logged_in');
+  const handleAdminSignOut = async () => {
+    try {
+      if (supabase) {
+        await supabase.auth.signOut();
+      }
+    } catch (e) {
+      console.warn('Sign out notice:', e);
+    } finally {
+      setIsAdmin(false);
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('church_admin_logged_in');
+      }
+    }
   };
 
   // Click on Event card: reveal more info and increment views
