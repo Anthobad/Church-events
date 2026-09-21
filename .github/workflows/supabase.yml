@@ -1,0 +1,60 @@
+name: Supabase Database CI/CD
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    paths:
+      - 'supabase/**'
+      - '.github/workflows/supabase.yml'
+  workflow_dispatch:
+
+jobs:
+  deploy-database:
+    name: Deploy Supabase Migrations
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Verify Supabase Directory Structure
+        run: |
+          echo "Checking Supabase configuration and migration files..."
+          ls -la supabase/
+          ls -la supabase/migrations/
+
+      - name: Push Migrations to Supabase
+        if: env.SUPABASE_ACCESS_TOKEN != '' && env.SUPABASE_PROJECT_ID != ''
+        run: |
+          echo "Linking to Supabase project ${{ secrets.SUPABASE_PROJECT_ID }}..."
+          supabase link --project-ref "${{ secrets.SUPABASE_PROJECT_ID }}"
+          echo "Applying migrations to Supabase database..."
+          supabase db push --password "${{ secrets.SUPABASE_DB_PASSWORD }}"
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+
+      - name: Notice If Secrets Not Configured
+        if: env.SUPABASE_ACCESS_TOKEN == '' || env.SUPABASE_PROJECT_ID == ''
+        run: |
+          echo "================================================================================="
+          echo "INFO: Supabase secrets not detected in GitHub Secrets."
+          echo "If you are using Supabase Dashboard's native GitHub Integration, Supabase"
+          echo "reads and applies 'supabase/migrations/' automatically on every push!"
+          echo ""
+          echo "To also enable this GitHub Action, add these Repository Secrets in GitHub:"
+          echo " - SUPABASE_ACCESS_TOKEN (from https://supabase.com/dashboard/account/tokens)"
+          echo " - SUPABASE_PROJECT_ID   (from your project dashboard URL or General Settings)"
+          echo " - SUPABASE_DB_PASSWORD  (your database password set at project creation)"
+          echo "================================================================================="
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}

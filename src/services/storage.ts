@@ -237,6 +237,168 @@ const initialCodes: AdminReservationCode[] = [
 ];
 
 // Helper to get from local storage or seed
+export function eventToRow(event: ChurchEvent) {
+  return {
+    id: event.id,
+    title: event.title,
+    description: event.description,
+    image_url: event.imageUrl || null,
+    date: event.date,
+    time: event.time,
+    location: event.location,
+    type: event.type,
+    is_paid: event.isPaid,
+    views: event.views || 0,
+    likes: event.likes || 0,
+    blueprint: event.blueprint || null,
+    created_at: event.createdAt || new Date().toISOString()
+  };
+}
+
+export function rowToEvent(row: any): ChurchEvent {
+  return {
+    id: String(row.id),
+    title: String(row.title || ''),
+    description: String(row.description || ''),
+    imageUrl: row.image_url || undefined,
+    date: String(row.date || ''),
+    time: String(row.time || ''),
+    location: String(row.location || ''),
+    type: (row.type as any) || 'registration_required',
+    isPaid: Boolean(row.is_paid),
+    views: Number(row.views || 0),
+    likes: Number(row.likes || 0),
+    blueprint: row.blueprint || undefined,
+    createdAt: row.created_at || new Date().toISOString()
+  };
+}
+
+export function registrationToRow(reg: Registration) {
+  return {
+    id: reg.id,
+    event_id: reg.eventId,
+    user_name: reg.userName,
+    user_phone: reg.userPhone,
+    party_size: reg.partySize,
+    element_id: reg.elementId || null,
+    element_label: reg.elementLabel || null,
+    is_paid: reg.isPaid,
+    code_used: reg.codeUsed || null,
+    registered_at: reg.registeredAt || new Date().toISOString()
+  };
+}
+
+export function rowToRegistration(row: any): Registration {
+  return {
+    id: String(row.id),
+    eventId: String(row.event_id),
+    userName: String(row.user_name || ''),
+    userPhone: String(row.user_phone || ''),
+    partySize: Number(row.party_size || 1),
+    elementId: row.element_id || undefined,
+    elementLabel: row.element_label || undefined,
+    isPaid: Boolean(row.is_paid),
+    codeUsed: row.code_used || undefined,
+    registeredAt: row.registered_at || new Date().toISOString()
+  };
+}
+
+export function codeToRow(c: AdminReservationCode) {
+  return {
+    id: c.id,
+    code: c.code,
+    event_id: c.eventId,
+    user_name: c.userName,
+    party_size: c.partySize,
+    claimed: c.claimed,
+    element_id: c.elementId || null,
+    created_at: c.createdAt || new Date().toISOString()
+  };
+}
+
+export function rowToCode(row: any): AdminReservationCode {
+  return {
+    id: String(row.id),
+    code: String(row.code),
+    eventId: String(row.event_id),
+    userName: String(row.user_name || ''),
+    partySize: Number(row.party_size || 1),
+    claimed: Boolean(row.claimed),
+    elementId: row.element_id || undefined,
+    createdAt: row.created_at || new Date().toISOString()
+  };
+}
+
+/**
+ * Fetch latest data directly from the Supabase cloud database,
+ * store in local cache, and trigger realtime state update.
+ */
+export async function syncFromSupabase(): Promise<boolean> {
+  if (!supabase) return false;
+  try {
+    const [eventsRes, regsRes, codesRes] = await Promise.all([
+      supabase.from('church_events').select('*').order('created_at', { ascending: false }),
+      supabase.from('church_registrations').select('*'),
+      supabase.from('church_admin_codes').select('*')
+    ]);
+
+    let changed = false;
+
+    if (!eventsRes.error && eventsRes.data && eventsRes.data.length > 0) {
+      const parsedEvents = eventsRes.data.map(rowToEvent);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(STORAGE_EVENTS_KEY, JSON.stringify(parsedEvents));
+      }
+      changed = true;
+    }
+
+    if (!regsRes.error && regsRes.data) {
+      const parsedRegs = regsRes.data.map(rowToRegistration);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(STORAGE_REGISTRATIONS_KEY, JSON.stringify(parsedRegs));
+      }
+      changed = true;
+    }
+
+    if (!codesRes.error && codesRes.data) {
+      const parsedCodes = codesRes.data.map(rowToCode);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(STORAGE_CODES_KEY, JSON.stringify(parsedCodes));
+      }
+      changed = true;
+    }
+
+    if (changed) {
+      broadcastUpdate('SUPABASE_SYNC_COMPLETE');
+      return true;
+    }
+    return false;
+  } catch (err) {
+    console.warn('Supabase sync notice:', err);
+    return false;
+  }
+}
+
+// Setup Supabase Realtime channel subscription if configured
+if (typeof window !== 'undefined' && supabase) {
+  try {
+    supabase
+      .channel('church_realtime_sync')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'church_events' }, async () => {
+        await syncFromSupabase();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'church_registrations' }, async () => {
+        await syncFromSupabase();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'church_admin_codes' }, async () => {
+        await syncFromSupabase();
+      })
+      .subscribe();
+  } catch (err) {
+    console.warn('Supabase realtime subscription notice:', err);
+  }
+}
+
 export function getStoredEvents(): ChurchEvent[] {
   if (typeof window === 'undefined') return initialEvents;
   try {
@@ -272,8 +434,33 @@ export function saveStoredEvents(events: ChurchEvent[]) {
   try {
     localStorage.setItem(STORAGE_EVENTS_KEY, JSON.stringify(events));
     broadcastUpdate('EVENTS_UPDATED', events);
+
+    // Sync to Supabase in background
+    if (supabase) {
+      const rows = events.map(eventToRow);
+      Promise.resolve(supabase.from('church_events').upsert(rows)).catch((err) =>
+        console.warn('Supabase event upsert notice:', err)
+      );
+    }
   } catch (e) {
     console.error('Failed to save events to storage', e);
+  }
+}
+
+export function deleteStoredEvent(eventId: string) {
+  if (typeof window === 'undefined') return;
+  try {
+    const events = getStoredEvents().filter((e) => e.id !== eventId);
+    localStorage.setItem(STORAGE_EVENTS_KEY, JSON.stringify(events));
+    broadcastUpdate('EVENTS_UPDATED', events);
+
+    if (supabase) {
+      Promise.resolve(supabase.from('church_events').delete().eq('id', eventId)).catch((err) =>
+        console.warn('Supabase delete event notice:', err)
+      );
+    }
+  } catch (e) {
+    console.error('Failed to delete event', e);
   }
 }
 
@@ -296,6 +483,13 @@ export function saveStoredRegistrations(registrations: Registration[]) {
   try {
     localStorage.setItem(STORAGE_REGISTRATIONS_KEY, JSON.stringify(registrations));
     broadcastUpdate('REGISTRATIONS_UPDATED', registrations);
+
+    if (supabase) {
+      const rows = registrations.map(registrationToRow);
+      Promise.resolve(supabase.from('church_registrations').upsert(rows)).catch((err) =>
+        console.warn('Supabase registration upsert notice:', err)
+      );
+    }
   } catch (e) {
     console.error('Failed to save registrations', e);
   }
@@ -320,6 +514,13 @@ export function saveStoredAdminCodes(codes: AdminReservationCode[]) {
   try {
     localStorage.setItem(STORAGE_CODES_KEY, JSON.stringify(codes));
     broadcastUpdate('CODES_UPDATED', codes);
+
+    if (supabase) {
+      const rows = codes.map(codeToRow);
+      Promise.resolve(supabase.from('church_admin_codes').upsert(rows)).catch((err) =>
+        console.warn('Supabase admin codes upsert notice:', err)
+      );
+    }
   } catch (e) {
     console.error('Failed to save admin codes', e);
   }

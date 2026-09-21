@@ -6,6 +6,7 @@ import { translations } from './services/i18n';
 import {
   getStoredEvents,
   saveStoredEvents,
+  deleteStoredEvent,
   getStoredRegistrations,
   saveStoredRegistrations,
   getStoredAdminCodes,
@@ -14,7 +15,8 @@ import {
   setUserLikes,
   subscribeToRealtime,
   generateRandom8DigitCode,
-  checkSeatConflict
+  checkSeatConflict,
+  syncFromSupabase
 } from './services/storage';
 
 import { Header } from './components/Header';
@@ -71,6 +73,11 @@ export default function App() {
       setIsAdmin(true);
     }
     refreshData();
+
+    // Trigger initial background sync from Supabase database if configured
+    syncFromSupabase().then((changed) => {
+      if (changed) refreshData();
+    });
 
     // Subscribe to cross-tab/multi-window real-time events
     const unsubscribe = subscribeToRealtime(() => {
@@ -263,8 +270,8 @@ export default function App() {
   // Admin Delete Event
   const handleConfirmDelete = () => {
     if (!eventToDelete) return;
+    deleteStoredEvent(eventToDelete.id);
     const updatedEvents = events.filter((e) => e.id !== eventToDelete.id);
-    saveStoredEvents(updatedEvents);
     setEvents(updatedEvents);
 
     // Clean up related registrations
