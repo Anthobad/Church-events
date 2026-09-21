@@ -59,3 +59,11 @@ export interface AdminReservationCode {
   elementId?: string;
   createdAt: string;
 }
+
+export interface UserProfile {
+  id: string;
+  username: string;
+  email?: string;
+  role: string;
+  createdAt: string;
+}

@@ -78,60 +78,51 @@ ON CONFLICT (id) DO UPDATE SET public = true;
 
 CREATE POLICY "Public event images storage" ON storage.objects FOR ALL USING (bucket_id = 'event-images') WITH CHECK (bucket_id = 'event-images');
 
--- 7. Provision 1 Admin Account in Supabase Auth
--- Username: admin (or admin@church.org)
--- Password: churchAdmin2026!
-CREATE EXTENSION IF NOT EXISTS "pgcrypto";
+-- 7. User Profiles Table (Stores usernames for Supabase accounts)
+CREATE TABLE IF NOT EXISTS public.profiles (
+  id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  username TEXT UNIQUE NOT NULL,
+  email TEXT,
+  role TEXT NOT NULL DEFAULT 'admin',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
 
-DO $$
-DECLARE
-  admin_uid UUID := 'a0000000-0000-0000-0000-000000000001'::UUID;
+-- Case-insensitive unique index on username
+CREATE UNIQUE INDEX IF NOT EXISTS idx_profiles_username_lower ON public.profiles (LOWER(username));
+
+-- Row Level Security (RLS) for profiles
+ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Public read profiles" ON public.profiles FOR SELECT USING (true);
+CREATE POLICY "Users update own profile" ON public.profiles FOR UPDATE USING (auth.uid() = id);
+CREATE POLICY "Users insert own profile" ON public.profiles FOR INSERT WITH CHECK (auth.uid() = id);
+
+-- Trigger to automatically create or sync user profile when admin is created in Supabase Auth
+CREATE OR REPLACE FUNCTION public.handle_new_user()
+RETURNS TRIGGER AS $$
 BEGIN
-  IF NOT EXISTS (SELECT 1 FROM auth.users WHERE email = 'admin@church.org') THEN
-    INSERT INTO auth.users (
-      instance_id, id, aud, role, email,
-      encrypted_password, email_confirmed_at,
-      raw_app_meta_data, raw_user_meta_data,
-      created_at, updated_at
-    ) VALUES (
-      '00000000-0000-0000-0000-000000000000',
-      admin_uid,
-      'authenticated',
-      'authenticated',
-      'admin@church.org',
-      crypt('churchAdmin2026!', gen_salt('bf')),
-      NOW(),
-      '{"provider":"email","providers":["email"]}',
-      '{"username":"admin","role":"admin"}',
-      NOW(),
-      NOW()
-    );
+  INSERT INTO public.profiles (id, username, email, role)
+  VALUES (
+    NEW.id,
+    COALESCE(
+      NEW.raw_user_meta_data->>'username',
+      split_part(NEW.email, '@', 1)
+    ),
+    NEW.email,
+    COALESCE(NEW.raw_user_meta_data->>'role', 'admin')
+  )
+  ON CONFLICT (id) DO UPDATE
+  SET email = EXCLUDED.email,
+      username = COALESCE(profiles.username, EXCLUDED.username),
+      updated_at = NOW();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
 
-    INSERT INTO auth.identities (
-      id, user_id, identity_data, provider, provider_id, last_sign_in_at, created_at, updated_at
-    ) VALUES (
-      admin_uid,
-      admin_uid,
-      json_build_object('sub', admin_uid::text, 'email', 'admin@church.org')::jsonb,
-      'email',
-      admin_uid::text,
-      NOW(),
-      NOW(),
-      NOW()
-    ) ON CONFLICT DO NOTHING;
-  ELSE
-    UPDATE auth.users
-    SET encrypted_password = crypt('churchAdmin2026!', gen_salt('bf')),
-        email_confirmed_at = NOW(),
-        updated_at = NOW()
-    WHERE email = 'admin@church.org';
-  END IF;
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+CREATE TRIGGER on_auth_user_created
+  AFTER INSERT OR UPDATE ON auth.users
+  FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
 
-  IF EXISTS (SELECT 1 FROM auth.users WHERE email = 'church.admin@gmail.com') THEN
-    UPDATE auth.users
-    SET encrypted_password = crypt('churchAdmin2026!', gen_salt('bf')),
-        email_confirmed_at = NOW(),
-        updated_at = NOW()
-    WHERE email = 'church.admin@gmail.com';
-  END IF;
-END $$;
+-- Enable Realtime for profiles
+ALTER PUBLICATION supabase_realtime ADD TABLE public.profiles;

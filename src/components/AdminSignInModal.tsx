@@ -45,14 +45,31 @@ export const AdminSignInModal: React.FC<AdminSignInModalProps> = ({
       return;
     }
 
-    // Support entering email directly (admin@church.org or personal email)
-    // or entering a simple username like "admin"
-    const candidates: string[] = trimmedUser.includes('@')
+    let resolvedEmail: string | null = null;
+
+    try {
+      // 1. Look up user in profiles table by username (case-insensitive)
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('email, username')
+        .ilike('username', trimmedUser)
+        .maybeSingle();
+
+      if (profile?.email) {
+        resolvedEmail = profile.email;
+      }
+    } catch (err) {
+      console.warn('Profile username lookup notice:', err);
+    }
+
+    // Build candidates list: resolved profile email, or direct input
+    const candidates: string[] = resolvedEmail
+      ? [resolvedEmail]
+      : trimmedUser.includes('@')
       ? [trimmedUser]
       : [
           `${trimmedUser.toLowerCase()}@church.org`,
-          'church.admin@gmail.com',
-          `${trimmedUser.toLowerCase()}@gmail.com`
+          trimmedUser
         ];
 
     let signedIn = false;
