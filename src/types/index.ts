@@ -47,6 +47,9 @@ export interface Registration {
   isPaid: boolean;
   codeUsed?: string;
   registeredAt: string;
+  checkedIn?: boolean;
+  checkedInAt?: string;
+  checkedInBy?: string;
 }
 
 export interface AdminReservationCode {

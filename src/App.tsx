@@ -21,7 +21,9 @@ import {
   generateRandom8DigitCode,
   checkSeatConflict,
   syncFromSupabase,
-  supabase
+  supabase,
+  getStoredLanguage,
+  saveStoredLanguage
 } from './services/storage';
 
 import { Header } from './components/Header';
@@ -36,7 +38,7 @@ import { Loader2 } from 'lucide-react';
 const PAGE_SIZE = 4;
 
 export default function App() {
-  // Primary language: Arabic ('ar') as specified in user prompt
+  // Default to 'ar' on initial render for exact SSR hydration match, then restore user selection from localStorage
   const [language, setLanguage] = useState<Language>('ar');
   const [isAdmin, setIsAdmin] = useState<boolean>(false);
   const [mounted, setMounted] = useState<boolean>(false);
@@ -54,25 +56,31 @@ export default function App() {
 
   // Modals
   const [selectedEvent, setSelectedEvent] = useState<ChurchEvent | null>(null);
+  const [selectedEventAdminTab, setSelectedEventAdminTab] = useState<'verify' | 'registrations' | 'generator' | undefined>(undefined);
   const [isCreatingEvent, setIsCreatingEvent] = useState<boolean>(false);
   const [editingEvent, setEditingEvent] = useState<ChurchEvent | null>(null);
   const [eventToDelete, setEventToDelete] = useState<ChurchEvent | null>(null);
   const [showAdminSignIn, setShowAdminSignIn] = useState<boolean>(false);
 
-  // Load initial data
-  const refreshData = useCallback(() => {
-    const loadedEvents = getStoredEvents();
+  // Load data directly from Supabase / in-memory cache
+  const refreshData = useCallback(async () => {
+    const synced = await syncFromSupabase();
     // Sort all new events at top (newest date or createdAt first)
-    const sorted = [...loadedEvents].sort((a, b) => {
+    const sorted = [...synced.events].sort((a, b) => {
       return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
     });
     setEvents(sorted);
-    setRegistrations(getStoredRegistrations());
-    setAdminCodes(getStoredAdminCodes());
+    setRegistrations(synced.registrations);
+    setAdminCodes(synced.codes);
     setUserLikesState(getUserLikes());
   }, []);
 
   useEffect(() => {
+    // Safely restore stored user language preference after client hydration to prevent SSR mismatch
+    const savedLang = getStoredLanguage();
+    if (savedLang && savedLang !== 'ar') {
+      setLanguage(savedLang);
+    }
     setMounted(true);
 
     // Clean up any legacy localStorage admin bypass
@@ -95,29 +103,43 @@ export default function App() {
 
     refreshData();
 
-    // Trigger initial background sync from Supabase database if configured
-    syncFromSupabase().then((changed) => {
-      if (changed) refreshData();
+    // Subscribe to cross-tab/multi-window real-time events
+    const unsubscribe = subscribeToRealtime((msg) => {
+      if (msg?.type === 'SUPABASE_SYNC_COMPLETE' && msg.payload) {
+        const sorted = [...(msg.payload.events as ChurchEvent[])].sort((a, b) => {
+          return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+        });
+        setEvents(sorted);
+        setRegistrations(msg.payload.registrations);
+        setAdminCodes(msg.payload.codes);
+      } else if (msg?.type === 'REGISTRATIONS_UPDATED' && msg.payload) {
+        setRegistrations(msg.payload);
+      } else {
+        refreshData();
+      }
     });
 
-    // Subscribe to cross-tab/multi-window real-time events
-    const unsubscribe = subscribeToRealtime(() => {
-      refreshData();
-    });
+    // Active heartbeat: sync every 3.5 seconds to guarantee instant real-time updates without refresh
+    const liveSyncInterval = setInterval(() => {
+      syncFromSupabase();
+    }, 3500);
 
     return () => {
       unsubscribe();
+      clearInterval(liveSyncInterval);
       if (authSubscription) {
         authSubscription.unsubscribe();
       }
     };
   }, [refreshData]);
 
-  // Sync HTML lang and dir attribute with selected language
+  // Sync HTML lang and dir attribute with selected language & persist language to localStorage
   useEffect(() => {
+    if (!mounted) return;
     document.documentElement.lang = language;
     document.documentElement.dir = language === 'ar' ? 'rtl' : 'ltr';
-  }, [language]);
+    saveStoredLanguage(language);
+  }, [language, mounted]);
 
   // Admin authentication handlers via Supabase
   const handleAdminSignInSuccess = () => {
@@ -153,6 +175,7 @@ export default function App() {
 
     const targetEvent = updatedEvents.find((ev) => ev.id === event.id) || event;
     setSelectedEvent(targetEvent);
+    setSelectedEventAdminTab(undefined);
   };
 
   // Like button handling
@@ -181,7 +204,7 @@ export default function App() {
   };
 
   // Event Registration Submission with Conflict Check
-  const handleRegister = (data: {
+  const handleRegister = async (data: {
     eventId: string;
     userName: string;
     userPhone: string;
@@ -191,12 +214,57 @@ export default function App() {
     isPaid: boolean;
     codeUsed?: string;
   }) => {
+    const t = translations[language];
+
     // Fetch latest registrations to guarantee no concurrency conflict
     const currentRegs = getStoredRegistrations();
     const event = events.find((e) => e.id === data.eventId);
 
     if (!event) {
-      return { success: false, error: translations[language].eventNotFound };
+      return { success: false, error: t.eventNotFound };
+    }
+
+    // Require 8-digit code if event is paid
+    if (event.isPaid && !data.codeUsed) {
+      return { success: false, error: t.enterEightDigitCode };
+    }
+
+    // Strictly enforce single-use code verification
+    if (data.codeUsed) {
+      const currentCodes = getStoredAdminCodes();
+      const codeRecord = currentCodes.find((c) => c.code === data.codeUsed && c.eventId === data.eventId);
+
+      if (!codeRecord) {
+        return { success: false, error: t.invalidCodeError };
+      }
+
+      if (codeRecord.claimed) {
+        return { success: false, error: t.codeAlreadyUsedError };
+      }
+
+      // Check remote Supabase in real-time to avoid multi-tab or concurrent reuse
+      if (supabase) {
+        try {
+          const { data: remoteCode } = await supabase
+            .from('church_admin_codes')
+            .select('*')
+            .eq('code', data.codeUsed)
+            .eq('event_id', data.eventId)
+            .maybeSingle();
+
+          if (remoteCode && remoteCode.claimed) {
+            // Synchronize local memory with claimed status
+            const updatedCodes = currentCodes.map((c) =>
+              c.code === data.codeUsed ? { ...c, claimed: true } : c
+            );
+            saveStoredAdminCodes(updatedCodes);
+            setAdminCodes(updatedCodes);
+            return { success: false, error: t.codeAlreadyUsedError };
+          }
+        } catch (e) {
+          console.warn('Remote code verify notice:', e);
+        }
+      }
     }
 
     // Check seating conflict if seating element is assigned
@@ -395,6 +463,11 @@ export default function App() {
                   registrationCount={regCount}
                   onCardClick={handleEventClick}
                   onLikeClick={(id, e) => handleToggleLike(id, e)}
+                  onVerifyClick={(ev, e) => {
+                    e.stopPropagation();
+                    setSelectedEvent(ev);
+                    setSelectedEventAdminTab('verify');
+                  }}
                   onEditClick={(ev, e) => {
                     e.stopPropagation();
                     setEditingEvent(ev);
@@ -454,10 +527,22 @@ export default function App() {
           isLiked={Boolean(userLikes[selectedEvent.id])}
           registrations={registrations}
           adminCodes={adminCodes}
-          onClose={() => setSelectedEvent(null)}
+          initialAdminTab={selectedEventAdminTab}
+          onClose={() => {
+            setSelectedEvent(null);
+            setSelectedEventAdminTab(undefined);
+          }}
           onToggleLike={handleToggleLike}
           onRegister={handleRegister}
           onGenerateAdminCode={handleGenerateAdminCode}
+          onRegistrationUpdated={(updatedReg) => {
+            setRegistrations((prev) =>
+              prev.map((r) => (r.id === updatedReg.id ? updatedReg : r))
+            );
+          }}
+          onRegistrationsSynced={(newRegs) => {
+            setRegistrations(newRegs);
+          }}
           onEditClick={(ev) => {
             setSelectedEvent(null);
             setEditingEvent(ev);

@@ -12,7 +12,8 @@ import {
   Users,
   KeyRound,
   LayoutGrid,
-  Sparkles
+  Sparkles,
+  ScanLine
 } from 'lucide-react';
 
 interface EventCardProps {
@@ -25,6 +26,7 @@ interface EventCardProps {
   onLikeClick: (eventId: string, e: React.MouseEvent) => void;
   onEditClick?: (event: ChurchEvent, e: React.MouseEvent) => void;
   onDeleteClick?: (event: ChurchEvent, e: React.MouseEvent) => void;
+  onVerifyClick?: (event: ChurchEvent, e: React.MouseEvent) => void;
 }
 
 export const EventCard: React.FC<EventCardProps> = ({
@@ -36,7 +38,8 @@ export const EventCard: React.FC<EventCardProps> = ({
   onCardClick,
   onLikeClick,
   onEditClick,
-  onDeleteClick
+  onDeleteClick,
+  onVerifyClick
 }) => {
   const t = translations[language];
 
@@ -53,6 +56,18 @@ export const EventCard: React.FC<EventCardProps> = ({
           className="absolute top-3.5 end-3.5 z-10 flex items-center gap-1.5 bg-white/90 backdrop-blur-xs p-1 rounded-xl shadow-xs border border-stone-200"
           onClick={(e) => e.stopPropagation()}
         >
+          {onVerifyClick && (
+            <button
+              id={`verify-event-btn-${event.id}`}
+              type="button"
+              onClick={(e) => onVerifyClick(event, e)}
+              className="p-1.5 text-stone-600 hover:text-emerald-700 hover:bg-emerald-50 rounded-lg transition-colors cursor-pointer"
+              title={t.ticketVerificationTab}
+              aria-label={t.ticketVerificationTab}
+            >
+              <ScanLine className="w-4 h-4 text-emerald-600" />
+            </button>
+          )}
           {onEditClick && (
             <button
               id={`edit-event-btn-${event.id}`}
@@ -112,7 +127,7 @@ export const EventCard: React.FC<EventCardProps> = ({
       <div className="flex-1 flex flex-col justify-between min-w-0">
         <div>
           {/* Tags & Badges */}
-          <div className="flex flex-wrap items-center gap-2 mb-2 pe-16">
+          <div className={`flex flex-wrap items-center gap-2 mb-2 ${isAdmin ? 'pe-24 sm:pe-28' : 'pe-2'}`}>
             {event.type === 'open' ? (
               <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200">
                 <Sparkles className="w-3 h-3" />
@@ -152,7 +167,9 @@ export const EventCard: React.FC<EventCardProps> = ({
           {/* Title */}
           <h2
             id={`event-title-${event.id}`}
-            className="text-lg sm:text-xl font-bold text-slate-900 tracking-tight group-hover:text-amber-800 transition-colors mb-2 line-clamp-2"
+            className={`text-lg sm:text-xl font-bold text-slate-900 tracking-tight group-hover:text-amber-800 transition-colors mb-2 line-clamp-2 break-words ${
+              isAdmin && !event.imageUrl ? 'pe-24 sm:pe-0' : ''
+            }`}
           >
             {event.title}
           </h2>
@@ -160,7 +177,7 @@ export const EventCard: React.FC<EventCardProps> = ({
           {/* Description (Under title, a few lines if big or all if it fits) */}
           <p
             id={`event-desc-${event.id}`}
-            className="text-sm text-stone-600 line-clamp-2 sm:line-clamp-3 leading-relaxed mb-3"
+            className="text-sm text-stone-600 line-clamp-2 sm:line-clamp-3 leading-relaxed mb-3 break-words"
           >
             {event.description}
           </p>
@@ -175,7 +192,7 @@ export const EventCard: React.FC<EventCardProps> = ({
               <Clock className="w-3.5 h-3.5 text-stone-400 shrink-0" />
               <span>{event.time}</span>
             </span>
-            <span className="inline-flex items-center gap-1.5 max-w-[240px] truncate">
+            <span className="inline-flex items-center gap-1.5 min-w-0 max-w-full truncate">
               <MapPin className="w-3.5 h-3.5 text-stone-400 shrink-0" />
               <span className="truncate">{event.location}</span>
             </span>
@@ -183,7 +200,7 @@ export const EventCard: React.FC<EventCardProps> = ({
         </div>
 
         {/* Card Footer: Views and Likes */}
-        <div className="mt-4 pt-3 border-t border-stone-100 flex flex-wrap sm:flex-nowrap items-center justify-between gap-2 sm:gap-3 text-xs text-stone-500">
+        <div className="mt-4 pt-3 border-t border-stone-100 flex flex-wrap items-center justify-between gap-2 sm:gap-3 text-xs text-stone-500">
           <div className="flex items-center gap-3 sm:gap-4 shrink-0">
             {/* Real-time views count */}
             <span
@@ -216,9 +233,9 @@ export const EventCard: React.FC<EventCardProps> = ({
             </button>
           </div>
 
-          <span className="text-amber-800 font-semibold group-hover:translate-x-0.5 group-hover:-translate-x-0.5 transition-transform text-xs sm:text-[13px] shrink-0 inline-flex items-center gap-1">
-            <span>{t.clickToViewMore}</span>
-            <span className="inline-block rtl:rotate-180">&rarr;</span>
+          <span className="text-amber-800 font-semibold group-hover:translate-x-0.5 group-hover:-translate-x-0.5 transition-transform text-xs sm:text-[13px] inline-flex items-center gap-1 min-w-0 truncate">
+            <span className="truncate">{t.clickToViewMore}</span>
+            <span className="inline-block rtl:rotate-180 shrink-0">&rarr;</span>
           </span>
         </div>
       </div>

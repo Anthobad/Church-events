@@ -1,10 +1,53 @@
-import { ChurchEvent, Registration, AdminReservationCode } from '../types';
+import { ChurchEvent, Registration, AdminReservationCode, Language } from '../types';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
-const STORAGE_EVENTS_KEY = 'church_events_v2';
-const STORAGE_REGISTRATIONS_KEY = 'church_registrations_v2';
-const STORAGE_CODES_KEY = 'church_admin_codes_v2';
-const STORAGE_USER_LIKES_KEY = 'church_user_likes_v2';
+// The ONLY key persisted in localStorage is the user's selected language
+export const STORAGE_LANG_KEY = 'church_events_lang';
+
+export function getStoredLanguage(): Language {
+  if (typeof window === 'undefined') return 'ar';
+  try {
+    const saved = localStorage.getItem(STORAGE_LANG_KEY) as Language;
+    if (saved === 'ar' || saved === 'en' || saved === 'fr') {
+      return saved;
+    }
+  } catch (e) {
+    // ignore
+  }
+  return 'ar';
+}
+
+export function saveStoredLanguage(lang: Language) {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(STORAGE_LANG_KEY, lang);
+  } catch (e) {
+    // ignore
+  }
+}
+
+// Clean up any legacy localStorage entries so ONLY language is kept in localStorage
+if (typeof window !== 'undefined') {
+  try {
+    localStorage.removeItem('church_events_v2');
+    localStorage.removeItem('church_registrations_v2');
+    localStorage.removeItem('church_admin_codes_v2');
+    localStorage.removeItem('church_user_likes_v2');
+    localStorage.removeItem('church_events');
+    localStorage.removeItem('church_registrations');
+    localStorage.removeItem('church_admin_codes');
+    localStorage.removeItem('church_user_likes');
+    localStorage.removeItem('church_admin_logged_in');
+  } catch (e) {
+    // ignore
+  }
+}
+
+// In-memory runtime cache for fast synchronous React rendering
+let inMemoryEvents: ChurchEvent[] = [];
+let inMemoryRegistrations: Registration[] = [];
+let inMemoryCodes: AdminReservationCode[] = [];
+let inMemoryLikes: Record<string, boolean> = {};
 
 // Supabase client initialized strictly via environment variables in the background
 const supabaseUrl =
@@ -40,8 +83,22 @@ export function subscribeToRealtime(listener: RealtimeListener): () => void {
 }
 
 function broadcastUpdate(type: string, payload?: any) {
+  // Notify local in-tab listeners immediately
+  listeners.forEach((listener) => {
+    try {
+      listener({ type, payload });
+    } catch (e) {
+      console.warn('Local realtime listener notification warning:', e);
+    }
+  });
+
+  // Notify other tabs and windows
   if (realtimeChannel) {
-    realtimeChannel.postMessage({ type, payload });
+    try {
+      realtimeChannel.postMessage({ type, payload });
+    } catch (e) {
+      console.warn('BroadcastChannel error:', e);
+    }
   }
 }
 
@@ -88,6 +145,13 @@ export function rowToEvent(row: any): ChurchEvent {
 }
 
 export function registrationToRow(reg: Registration) {
+  let dbCode = reg.codeUsed || '';
+  if (reg.checkedIn) {
+    const at = reg.checkedInAt || new Date().toISOString();
+    const by = reg.checkedInBy || 'Admin';
+    dbCode = `${dbCode}__CHECKED_IN__${at}__${by}`;
+  }
+
   return {
     id: reg.id,
     event_id: reg.eventId,
@@ -97,12 +161,31 @@ export function registrationToRow(reg: Registration) {
     element_id: reg.elementId || null,
     element_label: reg.elementLabel || null,
     is_paid: reg.isPaid,
-    code_used: reg.codeUsed || null,
+    code_used: dbCode ? dbCode : null,
     registered_at: reg.registeredAt || new Date().toISOString()
   };
 }
 
 export function rowToRegistration(row: any): Registration {
+  const rawCode = String(row.code_used || '');
+  let checkedIn = Boolean(row.checked_in);
+  let checkedInAt: string | undefined = row.checked_in_at ? String(row.checked_in_at) : undefined;
+  let checkedInBy: string | undefined = row.checked_in_by ? String(row.checked_in_by) : undefined;
+  let codeUsed: string | undefined = undefined;
+
+  if (rawCode.includes('__CHECKED_IN__')) {
+    checkedIn = true;
+    const [codePart, metaPart] = rawCode.split('__CHECKED_IN__');
+    codeUsed = codePart ? codePart : undefined;
+    if (metaPart) {
+      const [at, by] = metaPart.split('__');
+      if (at && !checkedInAt) checkedInAt = at;
+      if (by && !checkedInBy) checkedInBy = by;
+    }
+  } else {
+    codeUsed = rawCode ? rawCode : undefined;
+  }
+
   return {
     id: String(row.id),
     eventId: String(row.event_id),
@@ -112,8 +195,11 @@ export function rowToRegistration(row: any): Registration {
     elementId: row.element_id || undefined,
     elementLabel: row.element_label || undefined,
     isPaid: Boolean(row.is_paid),
-    codeUsed: row.code_used || undefined,
-    registeredAt: row.registered_at || new Date().toISOString()
+    codeUsed,
+    registeredAt: row.registered_at || new Date().toISOString(),
+    checkedIn,
+    checkedInAt,
+    checkedInBy
   };
 }
 
@@ -143,16 +229,32 @@ export function rowToCode(row: any): AdminReservationCode {
   };
 }
 
+let isSyncing = false;
+
 /**
  * Fetch latest data directly from the Supabase cloud database,
- * store in local cache, and trigger realtime state update.
+ * store in in-memory cache, and trigger realtime state update.
  */
-/**
- * Fetch latest data directly from the Supabase cloud database,
- * store in local cache, and trigger realtime state update.
- */
-export async function syncFromSupabase(): Promise<boolean> {
-  if (!supabase) return false;
+export async function syncFromSupabase(): Promise<{
+  events: ChurchEvent[];
+  registrations: Registration[];
+  codes: AdminReservationCode[];
+}> {
+  if (!supabase) {
+    return {
+      events: inMemoryEvents,
+      registrations: inMemoryRegistrations,
+      codes: inMemoryCodes
+    };
+  }
+  if (isSyncing) {
+    return {
+      events: inMemoryEvents,
+      registrations: inMemoryRegistrations,
+      codes: inMemoryCodes
+    };
+  }
+  isSyncing = true;
   try {
     const [eventsRes, regsRes, codesRes] = await Promise.all([
       supabase.from('church_events').select('*').order('created_at', { ascending: false }),
@@ -163,37 +265,41 @@ export async function syncFromSupabase(): Promise<boolean> {
     let changed = false;
 
     if (!eventsRes.error && Array.isArray(eventsRes.data)) {
-      const parsedEvents = eventsRes.data.map(rowToEvent);
-      if (typeof window !== 'undefined') {
-        localStorage.setItem(STORAGE_EVENTS_KEY, JSON.stringify(parsedEvents));
-      }
+      inMemoryEvents = eventsRes.data.map(rowToEvent);
       changed = true;
     }
 
     if (!regsRes.error && Array.isArray(regsRes.data)) {
-      const parsedRegs = regsRes.data.map(rowToRegistration);
-      if (typeof window !== 'undefined') {
-        localStorage.setItem(STORAGE_REGISTRATIONS_KEY, JSON.stringify(parsedRegs));
-      }
+      inMemoryRegistrations = regsRes.data.map(rowToRegistration);
       changed = true;
     }
 
     if (!codesRes.error && Array.isArray(codesRes.data)) {
-      const parsedCodes = codesRes.data.map(rowToCode);
-      if (typeof window !== 'undefined') {
-        localStorage.setItem(STORAGE_CODES_KEY, JSON.stringify(parsedCodes));
-      }
+      inMemoryCodes = codesRes.data.map(rowToCode);
       changed = true;
     }
 
     if (changed) {
-      broadcastUpdate('SUPABASE_SYNC_COMPLETE');
-      return true;
+      broadcastUpdate('SUPABASE_SYNC_COMPLETE', {
+        events: inMemoryEvents,
+        registrations: inMemoryRegistrations,
+        codes: inMemoryCodes
+      });
     }
-    return false;
+    return {
+      events: inMemoryEvents,
+      registrations: inMemoryRegistrations,
+      codes: inMemoryCodes
+    };
   } catch (err) {
     console.warn('Supabase sync notice:', err);
-    return false;
+    return {
+      events: inMemoryEvents,
+      registrations: inMemoryRegistrations,
+      codes: inMemoryCodes
+    };
+  } finally {
+    isSyncing = false;
   }
 }
 
@@ -217,54 +323,20 @@ if (typeof window !== 'undefined' && supabase) {
   }
 }
 
-const MOCK_EVENT_IDS = new Set(['event-1', 'event-2', 'event-3', 'event-4']);
-const MOCK_REG_IDS = new Set(['reg-demo-1', 'reg-demo-2', 'reg-demo-3']);
-const MOCK_CODE_IDS = new Set(['code-1', 'code-2', 'code-3']);
-
 export function getStoredEvents(): ChurchEvent[] {
-  if (typeof window === 'undefined') return [];
-  try {
-    const data = localStorage.getItem(STORAGE_EVENTS_KEY);
-    if (!data) return [];
-    const parsed = JSON.parse(data);
-    if (Array.isArray(parsed)) {
-      return parsed
-        .filter((evt: ChurchEvent) => evt && !MOCK_EVENT_IDS.has(evt.id))
-        .map((evt: ChurchEvent) => {
-          if (evt.blueprint && (!evt.blueprint.width || evt.blueprint.width < 720)) {
-            return {
-              ...evt,
-              blueprint: {
-                ...evt.blueprint,
-                width: 720,
-                height: evt.blueprint.height || 480
-              }
-            };
-          }
-          return evt;
-        });
-    }
-    return [];
-  } catch (e) {
-    return [];
-  }
+  return inMemoryEvents;
 }
 
 export function saveStoredEvents(events: ChurchEvent[]) {
-  if (typeof window === 'undefined') return;
-  try {
-    localStorage.setItem(STORAGE_EVENTS_KEY, JSON.stringify(events));
-    broadcastUpdate('EVENTS_UPDATED', events);
+  inMemoryEvents = events;
+  broadcastUpdate('EVENTS_UPDATED', events);
 
-    // Sync to Supabase in background
-    if (supabase && events.length > 0) {
-      const rows = events.map(eventToRow);
-      Promise.resolve(supabase.from('church_events').upsert(rows)).catch((err) =>
-        console.warn('Supabase event upsert notice:', err)
-      );
-    }
-  } catch (e) {
-    console.error('Failed to save events to storage', e);
+  // Sync to Supabase in background
+  if (supabase && events.length > 0) {
+    const rows = events.map(eventToRow);
+    Promise.resolve(supabase.from('church_events').upsert(rows)).catch((err) =>
+      console.warn('Supabase event upsert notice:', err)
+    );
   }
 }
 
@@ -285,19 +357,13 @@ export async function saveSingleEventToSupabase(event: ChurchEvent): Promise<boo
 }
 
 export function deleteStoredEvent(eventId: string) {
-  if (typeof window === 'undefined') return;
-  try {
-    const events = getStoredEvents().filter((e) => e.id !== eventId);
-    localStorage.setItem(STORAGE_EVENTS_KEY, JSON.stringify(events));
-    broadcastUpdate('EVENTS_UPDATED', events);
+  inMemoryEvents = inMemoryEvents.filter((e) => e.id !== eventId);
+  broadcastUpdate('EVENTS_UPDATED', inMemoryEvents);
 
-    if (supabase) {
-      Promise.resolve(supabase.from('church_events').delete().eq('id', eventId)).catch((err) =>
-        console.warn('Supabase delete event notice:', err)
-      );
-    }
-  } catch (e) {
-    console.error('Failed to delete event', e);
+  if (supabase) {
+    Promise.resolve(supabase.from('church_events').delete().eq('id', eventId)).catch((err) =>
+      console.warn('Supabase delete event notice:', err)
+    );
   }
 }
 
@@ -317,31 +383,18 @@ export async function deleteSingleEventFromSupabase(eventId: string): Promise<bo
 }
 
 export function getStoredRegistrations(): Registration[] {
-  if (typeof window === 'undefined') return [];
-  try {
-    const data = localStorage.getItem(STORAGE_REGISTRATIONS_KEY);
-    if (!data) return [];
-    const parsed = JSON.parse(data);
-    return Array.isArray(parsed) ? parsed.filter((r: Registration) => r && !MOCK_REG_IDS.has(r.id)) : [];
-  } catch (e) {
-    return [];
-  }
+  return inMemoryRegistrations;
 }
 
 export function saveStoredRegistrations(registrations: Registration[]) {
-  if (typeof window === 'undefined') return;
-  try {
-    localStorage.setItem(STORAGE_REGISTRATIONS_KEY, JSON.stringify(registrations));
-    broadcastUpdate('REGISTRATIONS_UPDATED', registrations);
+  inMemoryRegistrations = registrations;
+  broadcastUpdate('REGISTRATIONS_UPDATED', registrations);
 
-    if (supabase && registrations.length > 0) {
-      const rows = registrations.map(registrationToRow);
-      Promise.resolve(supabase.from('church_registrations').upsert(rows)).catch((err) =>
-        console.warn('Supabase registration upsert notice:', err)
-      );
-    }
-  } catch (e) {
-    console.error('Failed to save registrations', e);
+  if (supabase && registrations.length > 0) {
+    const rows = registrations.map(registrationToRow);
+    Promise.resolve(supabase.from('church_registrations').upsert(rows)).catch((err) =>
+      console.warn('Supabase registration upsert notice:', err)
+    );
   }
 }
 
@@ -362,31 +415,18 @@ export async function saveSingleRegistrationToSupabase(reg: Registration): Promi
 }
 
 export function getStoredAdminCodes(): AdminReservationCode[] {
-  if (typeof window === 'undefined') return [];
-  try {
-    const data = localStorage.getItem(STORAGE_CODES_KEY);
-    if (!data) return [];
-    const parsed = JSON.parse(data);
-    return Array.isArray(parsed) ? parsed.filter((c: AdminReservationCode) => c && !MOCK_CODE_IDS.has(c.id)) : [];
-  } catch (e) {
-    return [];
-  }
+  return inMemoryCodes;
 }
 
 export function saveStoredAdminCodes(codes: AdminReservationCode[]) {
-  if (typeof window === 'undefined') return;
-  try {
-    localStorage.setItem(STORAGE_CODES_KEY, JSON.stringify(codes));
-    broadcastUpdate('CODES_UPDATED', codes);
+  inMemoryCodes = codes;
+  broadcastUpdate('CODES_UPDATED', codes);
 
-    if (supabase && codes.length > 0) {
-      const rows = codes.map(codeToRow);
-      Promise.resolve(supabase.from('church_admin_codes').upsert(rows)).catch((err) =>
-        console.warn('Supabase admin codes upsert notice:', err)
-      );
-    }
-  } catch (e) {
-    console.error('Failed to save admin codes', e);
+  if (supabase && codes.length > 0) {
+    const rows = codes.map(codeToRow);
+    Promise.resolve(supabase.from('church_admin_codes').upsert(rows)).catch((err) =>
+      console.warn('Supabase admin codes upsert notice:', err)
+    );
   }
 }
 
@@ -423,22 +463,11 @@ export async function fetchLiveCodesForEvent(eventId: string): Promise<AdminRese
 }
 
 export function getUserLikes(): Record<string, boolean> {
-  if (typeof window === 'undefined') return {};
-  try {
-    const data = localStorage.getItem(STORAGE_USER_LIKES_KEY);
-    return data ? JSON.parse(data) : {};
-  } catch (e) {
-    return {};
-  }
+  return inMemoryLikes;
 }
 
 export function setUserLikes(likes: Record<string, boolean>) {
-  if (typeof window === 'undefined') return;
-  try {
-    localStorage.setItem(STORAGE_USER_LIKES_KEY, JSON.stringify(likes));
-  } catch (e) {
-    console.error('Failed to save user likes', e);
-  }
+  inMemoryLikes = likes;
 }
 
 // Generate random 8-digit numeric code
@@ -575,3 +604,203 @@ export async function uploadEventImage(file: File): Promise<UploadResult> {
     fileSize: file.size
   };
 }
+
+// Clean and normalize ticket codes (removes spaces, dashes, prefixes)
+export function cleanTicketCode(code: string): string {
+  if (!code) return '';
+  return code
+    .trim()
+    .toUpperCase()
+    .replace(/^TKT-?/i, '')
+    .replace(/^#/, '')
+    .replace(/[\s-_]/g, '');
+}
+
+// Generate the 8-character display code for a registration ticket
+export function getTicketDisplayCode(registration: Registration): string {
+  const cleanId = registration.id.replace(/[^a-zA-Z0-9]/g, '');
+  return cleanId.slice(-8).toUpperCase();
+}
+
+export interface TicketVerificationResult {
+  status: 'VALID' | 'ALREADY_PASSED' | 'ADMISSION_CONFIRMED' | 'INVALID';
+  registration?: Registration;
+  error?: string;
+  matchedBy?: 'TICKET_CODE' | 'ADMIN_CODE' | 'PHONE' | 'ID';
+}
+
+// Verify a ticket code in real-time against database
+export async function verifyTicketCodeLive(
+  eventId: string,
+  rawInputCode: string
+): Promise<TicketVerificationResult> {
+  const cleanInput = cleanTicketCode(rawInputCode);
+  if (!cleanInput) {
+    return { status: 'INVALID', error: 'empty_code' };
+  }
+
+  // Live fetch from Supabase to prevent reading stale local cache when multiple admins are scanning
+  let regsToSearch = inMemoryRegistrations.filter((r) => r.eventId === eventId);
+  if (supabase) {
+    try {
+      const { data, error } = await supabase
+        .from('church_registrations')
+        .select('*')
+        .eq('event_id', eventId);
+      if (!error && Array.isArray(data)) {
+        const liveRegs = data.map(rowToRegistration);
+        const otherRegs = inMemoryRegistrations.filter((r) => r.eventId !== eventId);
+        inMemoryRegistrations = [...liveRegs, ...otherRegs];
+        regsToSearch = liveRegs;
+      }
+    } catch (e) {
+      console.warn('Live ticket verification sync warning:', e);
+    }
+  }
+
+  // Match against registration
+  let matchedBy: 'TICKET_CODE' | 'ADMIN_CODE' | 'PHONE' | 'ID' | undefined;
+  const match = regsToSearch.find((r) => {
+    const dispCode = getTicketDisplayCode(r);
+    const rawIdClean = r.id.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+    const phoneClean = r.userPhone.replace(/\D/g, '');
+    const codeUsedClean = r.codeUsed ? cleanTicketCode(r.codeUsed) : '';
+
+    if (cleanInput === dispCode || cleanInput === rawIdClean.slice(-8)) {
+      matchedBy = 'TICKET_CODE';
+      return true;
+    }
+    if (codeUsedClean && cleanInput === codeUsedClean) {
+      matchedBy = 'ADMIN_CODE';
+      return true;
+    }
+    if (cleanInput === rawIdClean || cleanInput === r.id.toUpperCase()) {
+      matchedBy = 'ID';
+      return true;
+    }
+    if (phoneClean && cleanInput.length >= 7 && phoneClean.includes(cleanInput)) {
+      matchedBy = 'PHONE';
+      return true;
+    }
+    return false;
+  });
+
+  if (!match) {
+    return { status: 'INVALID', error: 'not_found' };
+  }
+
+  if (match.checkedIn) {
+    return { status: 'ALREADY_PASSED', registration: match, matchedBy };
+  }
+
+  return { status: 'VALID', registration: match, matchedBy };
+}
+
+// Atomically check-in an attendee with concurrency protection
+export async function checkInRegistrationLive(
+  registrationId: string,
+  eventId: string,
+  adminName: string = 'Admin'
+): Promise<{
+  success: boolean;
+  status: 'CHECKED_IN' | 'ALREADY_PASSED' | 'ERROR';
+  registration?: Registration;
+  error?: string;
+}> {
+  let currentReg = inMemoryRegistrations.find((r) => r.id === registrationId);
+
+  // Direct database query to guard against concurrent check-ins by 2+ admins at different gates
+  if (supabase) {
+    try {
+      const { data, error } = await supabase
+        .from('church_registrations')
+        .select('*')
+        .eq('id', registrationId)
+        .maybeSingle();
+
+      if (!error && data) {
+        currentReg = rowToRegistration(data);
+      }
+    } catch (e) {
+      console.warn('Supabase checkin pre-flight query warning:', e);
+    }
+  }
+
+  if (!currentReg) {
+    return { success: false, status: 'ERROR', error: 'not_found' };
+  }
+
+  // Concurrency guard: If already checked in by another verifier, halt immediately
+  if (currentReg.checkedIn) {
+    return {
+      success: false,
+      status: 'ALREADY_PASSED',
+      registration: currentReg,
+      error: 'already_passed'
+    };
+  }
+
+  const checkInTimestamp = new Date().toISOString();
+  const updatedReg: Registration = {
+    ...currentReg,
+    checkedIn: true,
+    checkedInAt: checkInTimestamp,
+    checkedInBy: adminName
+  };
+
+  // Update in-memory cache and broadcast
+  const updatedList = inMemoryRegistrations.map((r) =>
+    r.id === registrationId ? updatedReg : r
+  );
+  inMemoryRegistrations = updatedList;
+  broadcastUpdate('REGISTRATIONS_UPDATED', updatedList);
+
+  // Synchronize to Supabase immediately
+  if (supabase) {
+    try {
+      const row = registrationToRow(updatedReg);
+      const { error } = await supabase.from('church_registrations').upsert(row);
+      if (error) {
+        console.error('Supabase check-in upsert error:', error.message);
+      }
+    } catch (e) {
+      console.error('Supabase check-in upsert exception:', e);
+    }
+  }
+
+  return { success: true, status: 'CHECKED_IN', registration: updatedReg };
+}
+
+// Undo check-in in case of error
+export async function undoCheckInLive(
+  registrationId: string,
+  eventId: string
+): Promise<{ success: boolean; registration?: Registration }> {
+  const currentReg = inMemoryRegistrations.find((r) => r.id === registrationId);
+  if (!currentReg) return { success: false };
+
+  const updatedReg: Registration = {
+    ...currentReg,
+    checkedIn: false,
+    checkedInAt: undefined,
+    checkedInBy: undefined
+  };
+
+  const updatedList = inMemoryRegistrations.map((r) =>
+    r.id === registrationId ? updatedReg : r
+  );
+  inMemoryRegistrations = updatedList;
+  broadcastUpdate('REGISTRATIONS_UPDATED', updatedList);
+
+  if (supabase) {
+    try {
+      const row = registrationToRow(updatedReg);
+      await supabase.from('church_registrations').upsert(row);
+    } catch (e) {
+      console.error('Supabase undo checkin exception:', e);
+    }
+  }
+
+  return { success: true, registration: updatedReg };
+}
+

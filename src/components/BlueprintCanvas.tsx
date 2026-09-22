@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { SeatingBlueprint, SeatingElement, Registration, Language } from '../types';
 import { translations } from '../services/i18n';
 import {
@@ -44,6 +44,7 @@ export const BlueprintCanvas: React.FC<BlueprintCanvasProps> = ({
   const t = translations[language];
   const [activeTool, setActiveTool] = useState<'select' | 'perimeter' | 'chair' | 'table_round' | 'table_rect' | 'label'>('select');
   const [editorSelectedId, setEditorSelectedId] = useState<string | null>(null);
+  const [hoveredElementId, setHoveredElementId] = useState<string | null>(null);
   const [hoverPoint, setHoverPoint] = useState<{ x: number; y: number } | null>(null);
   const [draggingVertexIndex, setDraggingVertexIndex] = useState<number | null>(null);
   const [draggingElementId, setDraggingElementId] = useState<string | null>(null);
@@ -83,6 +84,44 @@ export const BlueprintCanvas: React.FC<BlueprintCanvasProps> = ({
     const occupied = regs.reduce((sum, r) => sum + r.partySize, 0);
     return { count: regs.length, totalPeople: occupied, attendees: regs.map(r => r.userName) };
   };
+
+  // Overall seating metrics across all elements for live real-time canvas indicator
+  const seatingStats = useMemo(() => {
+    let totalCap = 0;
+    let totalOcc = 0;
+    let availableChairs = 0;
+    let totalChairs = 0;
+    let availableTables = 0;
+    let totalTables = 0;
+
+    blueprint.elements.forEach((elem) => {
+      if (elem.type === 'label') return;
+      const regs = registrations.filter((r) => r.elementId === elem.id);
+      const occ = regs.reduce((sum, r) => sum + r.partySize, 0);
+      const remaining = Math.max(0, elem.capacity - occ);
+      totalCap += elem.capacity;
+      totalOcc += occ;
+
+      if (elem.type === 'chair') {
+        totalChairs += 1;
+        if (remaining > 0) availableChairs += 1;
+      } else if (elem.type === 'table_round' || elem.type === 'table_rect') {
+        totalTables += 1;
+        if (remaining > 0) availableTables += 1;
+      }
+    });
+
+    const totalAvail = Math.max(0, totalCap - totalOcc);
+    return {
+      totalCapacity: totalCap,
+      totalOccupied: totalOcc,
+      totalAvailable: totalAvail,
+      availableChairs,
+      totalChairs,
+      availableTables,
+      totalTables
+    };
+  }, [blueprint.elements, registrations]);
 
   // SVG coordinate transformation
   const getCoordinates = (
@@ -858,6 +897,57 @@ export const BlueprintCanvas: React.FC<BlueprintCanvasProps> = ({
         </div>
       )}
 
+      {/* Real-time Live Seat Availability Bar */}
+      {!isEditor && (
+        <div
+          id="realtime-seat-availability-bar"
+          className="bg-slate-900 text-white px-3 sm:px-4 py-2.5 rounded-xl border border-slate-800 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 text-xs"
+        >
+          <div className="flex flex-wrap items-center gap-2 sm:gap-2.5">
+            {/* Live Real-time Pulse Badge */}
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-950/90 text-emerald-300 border border-emerald-700/60 font-bold text-[11px] shadow-xs shrink-0">
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-400"></span>
+              </span>
+              <span>
+                {language === 'ar' ? 'تحديث المقاعد مباشر وفوري' : language === 'fr' ? 'Direct temps réel' : 'Live Real-Time'}
+              </span>
+            </span>
+
+            {/* Total Available Seats Badge */}
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 font-extrabold text-xs shrink-0">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 shrink-0" />
+              <span>
+                {seatingStats.totalAvailable} {language === 'ar' ? 'مقعد شاغر متاح' : language === 'fr' ? 'places disponibles' : 'available seats'}
+              </span>
+            </span>
+
+            {/* Total Reserved Seats Badge */}
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-rose-500/15 text-rose-300 border border-rose-500/30 font-bold text-xs shrink-0">
+              <span className="w-2 h-2 rounded-full bg-rose-400 shrink-0" />
+              <span>
+                {seatingStats.totalOccupied} {language === 'ar' ? 'مقعد محجوز' : language === 'fr' ? 'réservées' : 'reserved'}
+              </span>
+            </span>
+          </div>
+
+          {/* Quick Breakdown of Chairs & Tables */}
+          <div className="flex flex-wrap items-center gap-2 text-stone-300 text-[11px] font-medium self-end sm:self-auto">
+            {seatingStats.totalChairs > 0 && (
+              <span className="bg-slate-800/90 px-2 py-0.5 rounded-md border border-slate-700/80">
+                🪑 {seatingStats.availableChairs}/{seatingStats.totalChairs} {language === 'ar' ? 'كراسي شاغرة' : language === 'fr' ? 'chaises libres' : 'chairs free'}
+              </span>
+            )}
+            {seatingStats.totalTables > 0 && (
+              <span className="bg-slate-800/90 px-2 py-0.5 rounded-md border border-slate-700/80">
+                🍽️ {seatingStats.availableTables}/{seatingStats.totalTables} {language === 'ar' ? 'طاولات بها مقاعد' : language === 'fr' ? 'tables ouvertes' : 'tables open'}
+              </span>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Seating Guide / Legend for Users */}
       {!isEditor && (
         <div className="flex flex-wrap items-center justify-between gap-2 text-xs bg-stone-50/80 p-2.5 rounded-xl border border-stone-200">
@@ -1190,6 +1280,8 @@ export const BlueprintCanvas: React.FC<BlueprintCanvasProps> = ({
                 key={element.id}
                 id={`elem-${element.id}`}
                 onClick={handleClick}
+                onMouseEnter={() => setHoveredElementId(element.id)}
+                onMouseLeave={() => setHoveredElementId(null)}
                 onMouseDown={(e) => handleElementPointerDown(e, element)}
                 onTouchStart={(e) => handleElementPointerDown(e, element)}
                 className={`transition-opacity duration-150 ${
@@ -1197,103 +1289,199 @@ export const BlueprintCanvas: React.FC<BlueprintCanvasProps> = ({
                 } ${isCurrentlyDragging ? 'opacity-80' : 'opacity-100'}`}
               >
                 {/* 1. Square Chair */}
-                {element.type === 'chair' && (
-                  <>
-                    <rect
-                      x={element.x}
-                      y={element.y}
-                      width={element.width}
-                      height={element.height}
-                      rx={Math.max(4, Math.min(12, Math.round(element.width * 0.18)))}
-                      fill={fillColor}
-                      stroke={strokeColor}
-                      strokeWidth={strokeWidth}
-                    />
-                    <text
-                      x={element.x + element.width / 2}
-                      y={element.y + element.height / 2 + 4}
-                      fill="#ffffff"
-                      fontSize={element.width < 34 ? "9" : "11"}
-                      fontWeight="bold"
-                      textAnchor="middle"
-                      dominantBaseline="middle"
-                    >
-                      {element.label}
-                    </text>
-                  </>
-                )}
+                {element.type === 'chair' && (() => {
+                  const isCompact = element.width < 40 || element.height < 40;
+                  const chairRemaining = Math.max(0, element.capacity - totalPeople);
+                  const isChairFull = element.capacity > 0 && chairRemaining <= 0;
+                  return (
+                    <>
+                      <rect
+                        x={element.x}
+                        y={element.y}
+                        width={element.width}
+                        height={element.height}
+                        rx={Math.max(4, Math.min(12, Math.round(element.width * 0.18)))}
+                        fill={fillColor}
+                        stroke={strokeColor}
+                        strokeWidth={strokeWidth}
+                      />
+                      {/* Chair top rail line */}
+                      <line
+                        x1={element.x + 5}
+                        y1={element.y + (isCompact ? 5 : 7)}
+                        x2={element.x + element.width - 5}
+                        y2={element.y + (isCompact ? 5 : 7)}
+                        stroke={isChairFull ? '#f87171' : '#34d399'}
+                        strokeWidth={isCompact ? 1.5 : 2}
+                        strokeLinecap="round"
+                        opacity="0.85"
+                      />
+                      {/* Chair Label */}
+                      <text
+                        x={element.x + element.width / 2}
+                        y={element.y + element.height / 2 - (isCompact ? 1 : 2)}
+                        fill="#ffffff"
+                        fontSize={isCompact ? "9" : "11"}
+                        fontWeight="bold"
+                        textAnchor="middle"
+                        dominantBaseline="middle"
+                      >
+                        {element.label}
+                      </text>
+                      {/* Real-time Available Seats text */}
+                      <text
+                        x={element.x + element.width / 2}
+                        y={element.y + element.height - (isCompact ? 3.5 : 5)}
+                        fill={isChairFull ? '#fca5a5' : '#a7f3d0'}
+                        fontSize={isCompact ? "7" : "8.5"}
+                        fontWeight="800"
+                        textAnchor="middle"
+                      >
+                        {isChairFull
+                          ? (language === 'ar' ? '0 متاح' : language === 'fr' ? '0 disp.' : '0 left')
+                          : (element.capacity === 1
+                              ? (language === 'ar' ? '1 متاح' : language === 'fr' ? '1 disp.' : '1 left')
+                              : `${chairRemaining}/${element.capacity}`)}
+                      </text>
+                      {/* Real-time status indicator dot */}
+                      <circle
+                        cx={element.x + element.width - 5}
+                        cy={element.y + 5}
+                        r={isCompact ? 2.5 : 3.5}
+                        fill={isChairFull ? '#ef4444' : '#10b981'}
+                        stroke="#ffffff"
+                        strokeWidth="1"
+                      />
+                    </>
+                  );
+                })()}
 
                 {/* 2. Round Table (Circle) */}
-                {element.type === 'table_round' && (
-                  <>
-                    <circle
-                      cx={element.x + element.width / 2}
-                      cy={element.y + element.height / 2}
-                      r={element.width / 2}
-                      fill={fillColor}
-                      stroke={strokeColor}
-                      strokeWidth={strokeWidth}
-                    />
-                    <text
-                      x={element.x + element.width / 2}
-                      y={element.y + element.height / 2 - (element.width < 60 ? 2 : 4)}
-                      fill="#ffffff"
-                      fontSize={element.width < 60 ? "9" : element.width > 120 ? "13" : "11"}
-                      fontWeight="bold"
-                      textAnchor="middle"
-                    >
-                      {element.label}
-                    </text>
-                    <text
-                      x={element.x + element.width / 2}
-                      y={element.y + element.height / 2 + (element.width < 60 ? 9 : 13)}
-                      fill={remaining <= 0 ? '#fca5a5' : '#a7f3d0'}
-                      fontSize={element.width < 60 ? "8" : element.width > 120 ? "11" : "10"}
-                      textAnchor="middle"
-                    >
-                      {isFullyBooked
-                        ? (language === 'fr' ? 'Complet' : language === 'en' ? 'Full' : 'ممتلئة')
-                        : `${remaining}/${element.capacity} ${language === 'fr' ? 'disp.' : language === 'en' ? 'avail.' : 'متاح'}`}
-                    </text>
-                  </>
-                )}
+                {element.type === 'table_round' && (() => {
+                  const cx = element.x + element.width / 2;
+                  const cy = element.y + element.height / 2;
+                  const r = element.width / 2;
+                  const isCompact = element.width < 65;
+
+                  return (
+                    <>
+                      <circle
+                        cx={cx}
+                        cy={cy}
+                        r={r}
+                        fill={fillColor}
+                        stroke={strokeColor}
+                        strokeWidth={strokeWidth}
+                      />
+                      <text
+                        x={cx}
+                        y={cy - (isCompact ? 3 : 7)}
+                        fill="#ffffff"
+                        fontSize={isCompact ? "9" : element.width > 120 ? "13" : "11"}
+                        fontWeight="bold"
+                        textAnchor="middle"
+                      >
+                        {element.label}
+                      </text>
+
+                      {/* Prominent Available Seats Badge */}
+                      {(() => {
+                        const badgeW = isCompact ? 50 : (language === 'ar' ? 82 : language === 'fr' ? 80 : 72);
+                        const badgeH = isCompact ? 13 : 17;
+                        return (
+                          <g>
+                            <rect
+                              x={cx - badgeW / 2}
+                              y={cy + (isCompact ? 1 : 2)}
+                              width={badgeW}
+                              height={badgeH}
+                              rx={badgeH / 2}
+                              fill={isFullyBooked ? 'rgba(239, 68, 68, 0.3)' : 'rgba(16, 185, 129, 0.3)'}
+                              stroke={isFullyBooked ? '#ef4444' : '#10b981'}
+                              strokeWidth="1"
+                            />
+                            <text
+                              x={cx}
+                              y={cy + (isCompact ? 10 : 14)}
+                              fill={isFullyBooked ? '#fca5a5' : '#a7f3d0'}
+                              fontSize={isCompact ? "7.5" : "9.5"}
+                              fontWeight="800"
+                              textAnchor="middle"
+                            >
+                              {isFullyBooked
+                                ? (language === 'fr' ? '0/' + element.capacity + ' Complet' : language === 'en' ? '0/' + element.capacity + ' Full' : '0/' + element.capacity + ' ممتلئة')
+                                : `${remaining}/${element.capacity} ${language === 'fr' ? 'dispo' : language === 'en' ? 'avail' : 'شاغر'}`}
+                            </text>
+                          </g>
+                        );
+                      })()}
+                    </>
+                  );
+                })()}
 
                 {/* 3. Rect Table (Rectangle) */}
-                {element.type === 'table_rect' && (
-                  <>
-                    <rect
-                      x={element.x}
-                      y={element.y}
-                      width={element.width}
-                      height={element.height}
-                      rx={Math.max(6, Math.min(16, Math.round(element.height * 0.18)))}
-                      fill={fillColor}
-                      stroke={strokeColor}
-                      strokeWidth={strokeWidth}
-                    />
-                    <text
-                      x={element.x + element.width / 2}
-                      y={element.y + element.height / 2 - (element.height < 50 ? 2 : 4)}
-                      fill="#ffffff"
-                      fontSize={element.width < 90 || element.height < 50 ? "10" : element.width > 160 ? "14" : "12"}
-                      fontWeight="bold"
-                      textAnchor="middle"
-                    >
-                      {element.label}
-                    </text>
-                    <text
-                      x={element.x + element.width / 2}
-                      y={element.y + element.height / 2 + (element.height < 50 ? 10 : 14)}
-                      fill={remaining <= 0 ? '#fca5a5' : '#a7f3d0'}
-                      fontSize={element.width < 90 || element.height < 50 ? "8" : element.width > 160 ? "11" : "10"}
-                      textAnchor="middle"
-                    >
-                      {isFullyBooked
-                        ? (language === 'fr' ? 'Complet' : language === 'en' ? 'Full' : 'ممتلئة')
-                        : `${remaining}/${element.capacity} ${language === 'fr' ? 'places' : language === 'en' ? 'seats' : 'مقاعد'}`}
-                    </text>
-                  </>
-                )}
+                {element.type === 'table_rect' && (() => {
+                  const isCompact = element.width < 90 || element.height < 50;
+                  const cx = element.x + element.width / 2;
+                  const cy = element.y + element.height / 2;
+
+                  return (
+                    <>
+                      <rect
+                        x={element.x}
+                        y={element.y}
+                        width={element.width}
+                        height={element.height}
+                        rx={Math.max(6, Math.min(16, Math.round(element.height * 0.18)))}
+                        fill={fillColor}
+                        stroke={strokeColor}
+                        strokeWidth={strokeWidth}
+                      />
+                      <text
+                        x={cx}
+                        y={cy - (isCompact ? 4 : 8)}
+                        fill="#ffffff"
+                        fontSize={isCompact ? "10" : element.width > 160 ? "14" : "12"}
+                        fontWeight="bold"
+                        textAnchor="middle"
+                      >
+                        {element.label}
+                      </text>
+
+                      {/* Prominent Available Seats Badge */}
+                      {(() => {
+                        const badgeW = isCompact ? (language === 'ar' ? 62 : 68) : (language === 'ar' ? 80 : language === 'fr' ? 88 : 80);
+                        const badgeH = isCompact ? 14 : 18;
+                        return (
+                          <g>
+                            <rect
+                              x={cx - badgeW / 2}
+                              y={cy + (isCompact ? 1 : 2)}
+                              width={badgeW}
+                              height={badgeH}
+                              rx={badgeH / 2}
+                              fill={isFullyBooked ? 'rgba(239, 68, 68, 0.3)' : 'rgba(16, 185, 129, 0.3)'}
+                              stroke={isFullyBooked ? '#ef4444' : '#10b981'}
+                              strokeWidth="1"
+                            />
+                            <text
+                              x={cx}
+                              y={cy + (isCompact ? 11 : 14)}
+                              fill={isFullyBooked ? '#fca5a5' : '#a7f3d0'}
+                              fontSize={isCompact ? "8" : "9.5"}
+                              fontWeight="800"
+                              textAnchor="middle"
+                            >
+                              {isFullyBooked
+                                ? (language === 'fr' ? '0/' + element.capacity + ' Complet' : language === 'en' ? '0/' + element.capacity + ' Full' : '0/' + element.capacity + ' ممتلئة')
+                                : `${remaining}/${element.capacity} ${language === 'fr' ? 'places' : language === 'en' ? 'seats' : 'شاغر'}`}
+                            </text>
+                          </g>
+                        );
+                      })()}
+                    </>
+                  );
+                })()}
 
                 {/* 4. Text Label / Area Name */}
                 {element.type === 'label' && (
@@ -1324,6 +1512,112 @@ export const BlueprintCanvas: React.FC<BlueprintCanvasProps> = ({
             );
           })}
         </svg>
+
+        {/* Floating Real-time HUD info for hovered / selected element - HTML Overlay */}
+        {(() => {
+          const activeElemId = hoveredElementId || selectedElementId;
+          if (!activeElemId) return null;
+          const elem = blueprint.elements.find((e) => e.id === activeElemId);
+          if (!elem || elem.type === 'label') return null;
+
+          const { totalPeople, attendees } = getOccupancy(elem.id);
+          const rem = Math.max(0, elem.capacity - totalPeople);
+          const isFull = elem.capacity > 0 && rem <= 0;
+          const isRTL = language === 'ar';
+
+          const typeLabel = elem.type === 'chair'
+            ? (language === 'ar' ? 'كرسي' : language === 'fr' ? 'Chaise' : 'Chair')
+            : (language === 'ar' ? 'طاولة' : language === 'fr' ? 'Table' : 'Table');
+
+          const statusText = isFull
+            ? (language === 'ar'
+                ? `ممتلئة بالكامل (${elem.capacity}/${elem.capacity})`
+                : language === 'fr'
+                ? `Complet (${elem.capacity}/${elem.capacity})`
+                : `Fully Booked (${elem.capacity}/${elem.capacity})`)
+            : (language === 'ar'
+                ? `${rem} من ${elem.capacity} مقاعد شاغرة`
+                : language === 'fr'
+                ? `${rem}/${elem.capacity} places libres`
+                : `${rem}/${elem.capacity} seats available`);
+
+          const bookedSubtext = !isFull && totalPeople > 0
+            ? (language === 'ar'
+                ? `(${totalPeople} محجوز)`
+                : language === 'fr'
+                ? `(${totalPeople} rés.)`
+                : `(${totalPeople} booked)`)
+            : null;
+
+          const guestsText = attendees.length > 0
+            ? attendees.slice(0, 2).join(language === 'ar' ? '، ' : ', ') + (attendees.length > 2 ? '...' : '')
+            : null;
+
+          // Percentage-based positioning directly aligned to SVG viewBox
+          const elemCenterX = elem.x + elem.width / 2;
+          const pctX = Math.max(12, Math.min(88, (elemCenterX / width) * 100));
+          const isNearTop = elem.y < 80;
+          const pctY = isNearTop
+            ? ((elem.y + elem.height) / height) * 100
+            : (elem.y / height) * 100;
+
+          return (
+            <div
+              className="absolute pointer-events-none z-30 transition-all duration-100"
+              style={{
+                left: `${pctX}%`,
+                top: `${pctY}%`,
+                transform: `translateX(-50%) ${isNearTop ? 'translateY(10px)' : 'translateY(-10px) translateY(-100%)'}`,
+              }}
+            >
+              <div
+                dir={isRTL ? 'rtl' : 'ltr'}
+                className={`w-max max-w-[280px] sm:max-w-[320px] px-3 py-2 rounded-xl shadow-2xl backdrop-blur-md border text-start select-none ${
+                  isFull
+                    ? 'bg-slate-950/95 border-rose-500/80 shadow-rose-950/50'
+                    : 'bg-slate-950/95 border-emerald-500/80 shadow-emerald-950/50'
+                }`}
+              >
+                {/* Header row: Label & Type */}
+                <div className="flex items-center justify-between gap-3 text-xs font-bold text-white border-b border-white/10 pb-1 mb-1">
+                  <span className="truncate">{elem.label}</span>
+                  <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-white/10 text-stone-300 shrink-0">
+                    {typeLabel}
+                  </span>
+                </div>
+
+                {/* Status indicator row */}
+                <div className="flex items-center gap-1.5 text-[11px] font-semibold whitespace-nowrap">
+                  <span
+                    className={`inline-block w-2 h-2 rounded-full shrink-0 ${
+                      isFull ? 'bg-rose-500 ring-2 ring-rose-400/40' : 'bg-emerald-400 ring-2 ring-emerald-400/40'
+                    }`}
+                  />
+                  <span className={isFull ? 'text-rose-300' : 'text-emerald-300'}>
+                    {statusText}
+                  </span>
+                  {bookedSubtext && (
+                    <span className="text-stone-400 text-[10px] font-normal">
+                      {bookedSubtext}
+                    </span>
+                  )}
+                </div>
+
+                {/* Attendees row if any */}
+                {guestsText && (
+                  <div className="mt-1 pt-1 border-t border-white/10 text-[10px] text-stone-300 flex items-center gap-1 truncate">
+                    <span className="text-stone-400 shrink-0">
+                      {language === 'ar' ? 'الضيوف:' : language === 'fr' ? 'Inscrits:' : 'Guests:'}
+                    </span>
+                    <span className="truncate text-stone-200 font-medium">
+                      {guestsText}
+                    </span>
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })()}
       </div>
     </div>
   );

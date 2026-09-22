@@ -163,6 +163,37 @@ export interface Translations {
   uploadedToSupabase: string;
   imageReady: string;
   changeImage: string;
+  ticketVerificationTab: string;
+  verifyTicketTitle: string;
+  verifyTicketDesc: string;
+  enterTicketCodePlaceholder: string;
+  verifyBtn: string;
+  verifying: string;
+  validTicketTitle: string;
+  confirmEntryBtn: string;
+  alreadyPassedTitle: string;
+  alreadyPassedWarning: string;
+  admittedBy: string;
+  invalidTicketTitle: string;
+  invalidTicketDesc: string;
+  admissionStats: string;
+  passedCount: string;
+  remainingToEnter: string;
+  filterAll: string;
+  filterPassed: string;
+  filterPending: string;
+  statusPassed: string;
+  statusPending: string;
+  undoPass: string;
+  multiAdminSyncNotice: string;
+  ticketCodeLabel: string;
+  reservationCodeLabel: string;
+  quickVerifyBtn: string;
+  entrySuccessNotice: string;
+  admissionConfirmedTitle: string;
+  readyForNextTicket: string;
+  checkNextTicketBtn: string;
+  showTicketAtDoorPrompt: string;
 }
 
 export const translations: Record<Language, Translations> = {
@@ -328,7 +359,38 @@ export const translations: Record<Language, Translations> = {
     uploadingImage: 'جاري رفع الصورة إلى حاوية Supabase...',
     uploadedToSupabase: 'تم الحفظ في حاوية Supabase (event-images)',
     imageReady: 'الصورة جاهزة',
-    changeImage: 'تغيير الصورة'
+    changeImage: 'تغيير الصورة',
+    ticketVerificationTab: 'التحقق من التذاكر والدخول',
+    verifyTicketTitle: 'فحص وتأكيد صلاحية التذاكر',
+    verifyTicketDesc: 'أدخل رمز التذكرة أو كود الحجز للتحقق الفوري ومنع تكرار الدخول عند البوابة.',
+    enterTicketCodePlaceholder: 'أدخل رمز التذكرة أو كود الحجز (مثال: 93050529)...',
+    verifyBtn: 'فحص الكود',
+    verifying: 'جاري الفحص المباشر...',
+    validTicketTitle: 'تذكرة صالحة - جاهزة للدخول',
+    confirmEntryBtn: 'تأكيد الدخول وتمرير التذكرة',
+    alreadyPassedTitle: '⚠️ تحذير: كود مكرر - تم الدخول مسبقاً!',
+    alreadyPassedWarning: 'تم تمرير هذه التذكرة وتسجيل دخولها مسبقاً في:',
+    admittedBy: 'بواسطة المشرف:',
+    invalidTicketTitle: '❌ كود غير صالح - لم يتم العثور على تذكرة',
+    invalidTicketDesc: 'يرجى مراجعة الكود مع الزائر أو البحث باسمه ورقم هاتفه في القائمة أدناه.',
+    admissionStats: 'إحصائيات الدخول المباشر',
+    passedCount: 'تم الدخول',
+    remainingToEnter: 'المتبقي',
+    filterAll: 'الكل',
+    filterPassed: 'تم الدخول',
+    filterPending: 'في الانتظار',
+    statusPassed: 'تم الدخول',
+    statusPending: 'لم يدخل بعد',
+    undoPass: 'إلغاء الدخول',
+    multiAdminSyncNotice: 'متزامن لحظياً عبر قاعدة البيانات لجميع أجهزة التحقق في نفس الوقت',
+    ticketCodeLabel: 'رمز التذكرة',
+    reservationCodeLabel: 'رمز الحجز الإداري',
+    quickVerifyBtn: 'فحص التذاكر',
+    entrySuccessNotice: 'تم تأكيد دخول التذكرة بنجاح!',
+    admissionConfirmedTitle: 'تم تأكيد الدخول وتمرير التذكرة بنجاح',
+    readyForNextTicket: 'جاهز لفحص التذكرة التالية',
+    checkNextTicketBtn: 'فحص تذكرة أخرى',
+    showTicketAtDoorPrompt: 'أظهر هذه التذكرة أو الرمز للمسؤول عند مدخل الفعالية'
   },
   en: {
     eventsTitle: 'Events',
@@ -492,7 +554,38 @@ export const translations: Record<Language, Translations> = {
     uploadingImage: 'Uploading image to Supabase storage bucket...',
     uploadedToSupabase: 'Stored in Supabase Bucket (event-images)',
     imageReady: 'Image Ready',
-    changeImage: 'Change Image'
+    changeImage: 'Change Image',
+    ticketVerificationTab: 'Ticket Verification & Entry',
+    verifyTicketTitle: 'Verify & Validate Tickets',
+    verifyTicketDesc: 'Enter the ticket code or reservation code for instant validation and duplication prevention at the entrance.',
+    enterTicketCodePlaceholder: 'Enter ticket code or reservation code (e.g. 93050529)...',
+    verifyBtn: 'Verify Code',
+    verifying: 'Checking live database...',
+    validTicketTitle: 'Valid Ticket - Ready for Entry',
+    confirmEntryBtn: 'Confirm Entry / Mark as Passed',
+    alreadyPassedTitle: '⚠️ Warning: Duplicate Ticket - Already Passed!',
+    alreadyPassedWarning: 'This ticket was already passed and admitted at:',
+    admittedBy: 'Admitted by:',
+    invalidTicketTitle: '❌ Invalid Code - No Matching Ticket Found',
+    invalidTicketDesc: 'Please verify the code with the attendee or search for their name or phone in the list below.',
+    admissionStats: 'Live Admission Stats',
+    passedCount: 'Admitted',
+    remainingToEnter: 'Remaining',
+    filterAll: 'All',
+    filterPassed: 'Admitted',
+    filterPending: 'Pending',
+    statusPassed: 'Passed',
+    statusPending: 'Not Entered',
+    undoPass: 'Undo Pass',
+    multiAdminSyncNotice: 'Synchronized live via database across all verifying devices simultaneously',
+    ticketCodeLabel: 'Ticket Code',
+    reservationCodeLabel: 'Admin Reservation Code',
+    quickVerifyBtn: 'Verify Tickets',
+    entrySuccessNotice: 'Ticket entry confirmed successfully!',
+    admissionConfirmedTitle: 'Entry Confirmed — Ticket Admitted',
+    readyForNextTicket: 'Ready to verify next attendee',
+    checkNextTicketBtn: 'Scan Next Ticket',
+    showTicketAtDoorPrompt: 'Present this ticket or code to the usher at the entrance'
   },
   fr: {
     eventsTitle: 'Événements',
@@ -656,6 +749,37 @@ export const translations: Record<Language, Translations> = {
     uploadingImage: 'Téléversement de l’image vers le panier Supabase...',
     uploadedToSupabase: 'Stocké dans le panier Supabase (event-images)',
     imageReady: 'Image prête',
-    changeImage: 'Changer l’image'
+    changeImage: 'Changer l’image',
+    ticketVerificationTab: 'Vérification des billets & Entrée',
+    verifyTicketTitle: 'Vérifier la validité des billets',
+    verifyTicketDesc: 'Saisissez le code du billet ou de réservation pour une vérification instantanée et éviter les doublons à l\'entrée.',
+    enterTicketCodePlaceholder: 'Entrez le code de billet ou de réservation (ex. 93050529)...',
+    verifyBtn: 'Vérifier le code',
+    verifying: 'Vérification en direct...',
+    validTicketTitle: 'Billet valide - Prêt pour l\'entrée',
+    confirmEntryBtn: 'Confirmer l\'entrée / Marquer comme passé',
+    alreadyPassedTitle: '⚠️ Attention : Billet en double - Déjà passé !',
+    alreadyPassedWarning: 'Ce billet a déjà été validé et admis à :',
+    admittedBy: 'Admis par :',
+    invalidTicketTitle: '❌ Code invalide - Aucun billet trouvé',
+    invalidTicketDesc: 'Veuillez vérifier le code avec le participant ou chercher son nom dans la liste ci-dessous.',
+    admissionStats: 'Statistiques d\'entrée en direct',
+    passedCount: 'Admis',
+    remainingToEnter: 'Restants',
+    filterAll: 'Tous',
+    filterPassed: 'Admis',
+    filterPending: 'En attente',
+    statusPassed: 'Passé',
+    statusPending: 'Non entré',
+    undoPass: 'Annuler l\'entrée',
+    multiAdminSyncNotice: 'Synchronisé en direct avec la base de données entre tous les terminaux de contrôle',
+    ticketCodeLabel: 'Code du billet',
+    reservationCodeLabel: 'Code de réservation admin',
+    quickVerifyBtn: 'Vérifier les billets',
+    entrySuccessNotice: 'Entrée du billet confirmée avec succès !',
+    admissionConfirmedTitle: 'Entrée confirmée — Billet validé',
+    readyForNextTicket: 'Prêt pour le participant suivant',
+    checkNextTicketBtn: 'Vérifier un autre billet',
+    showTicketAtDoorPrompt: 'Présentez ce billet ou ce code au responsable à l\'entrée'
   }
 };
