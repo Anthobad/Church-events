@@ -29,6 +29,7 @@ interface BlueprintCanvasProps {
   onSelectElement?: (element: SeatingElement) => void;
   language: Language;
   partySizeForHighlight?: number; // Party size trying to register (to highlight optimal tables)
+  showAvailabilityBar?: boolean;
 }
 
 export const BlueprintCanvas: React.FC<BlueprintCanvasProps> = ({
@@ -39,7 +40,8 @@ export const BlueprintCanvas: React.FC<BlueprintCanvasProps> = ({
   selectedElementId,
   onSelectElement,
   language,
-  partySizeForHighlight
+  partySizeForHighlight,
+  showAvailabilityBar = true
 }) => {
   const t = translations[language];
   const [activeTool, setActiveTool] = useState<'select' | 'perimeter' | 'chair' | 'table_round' | 'table_rect' | 'label'>('select');
@@ -898,7 +900,7 @@ export const BlueprintCanvas: React.FC<BlueprintCanvasProps> = ({
       )}
 
       {/* Real-time Live Seat Availability Bar */}
-      {!isEditor && (
+      {!isEditor && showAvailabilityBar && (
         <div
           id="realtime-seat-availability-bar"
           className="bg-slate-900 text-white px-3 sm:px-4 py-2.5 rounded-xl border border-slate-800 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 text-xs"

@@ -470,12 +470,13 @@ export function setUserLikes(likes: Record<string, boolean>) {
   inMemoryLikes = likes;
 }
 
-// Generate random 8-digit numeric code
-export function generateRandom8DigitCode(): string {
-  // Ensure exactly 8 digits, not starting with 0
-  const num = Math.floor(10000000 + Math.random() * 90000000);
+// Generate random 4-digit numeric code
+export function generateRandom4DigitCode(): string {
+  // Ensure exactly 4 digits, not starting with 0
+  const num = Math.floor(1000 + Math.random() * 9000);
   return num.toString();
 }
+export const generateRandom8DigitCode = generateRandom4DigitCode;
 
 // Conflict checking helper for seating
 export function checkSeatConflict(
@@ -616,10 +617,10 @@ export function cleanTicketCode(code: string): string {
     .replace(/[\s-_]/g, '');
 }
 
-// Generate the 8-character display code for a registration ticket
+// Generate the 4-character display code for a registration ticket
 export function getTicketDisplayCode(registration: Registration): string {
   const cleanId = registration.id.replace(/[^a-zA-Z0-9]/g, '');
-  return cleanId.slice(-8).toUpperCase();
+  return cleanId.slice(-4).toUpperCase();
 }
 
 export interface TicketVerificationResult {
@@ -666,7 +667,7 @@ export async function verifyTicketCodeLive(
     const phoneClean = r.userPhone.replace(/\D/g, '');
     const codeUsedClean = r.codeUsed ? cleanTicketCode(r.codeUsed) : '';
 
-    if (cleanInput === dispCode || cleanInput === rawIdClean.slice(-8)) {
+    if (cleanInput === dispCode || cleanInput === rawIdClean.slice(-4) || cleanInput === rawIdClean.slice(-8)) {
       matchedBy = 'TICKET_CODE';
       return true;
     }

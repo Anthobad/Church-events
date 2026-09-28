@@ -277,11 +277,11 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
     return true;
   });
 
-  // Handle validating 8-digit code
+  // Handle validating 4-digit or 8-digit code
   const handleVerifyCode = async () => {
     setErrorMessage(null);
     const cleanCode = eightDigitCodeInput.trim();
-    if (cleanCode.length !== 8) {
+    if (cleanCode.length !== 4 && cleanCode.length !== 8) {
       setErrorMessage(t.invalidCodeError);
       return;
     }
@@ -590,6 +590,77 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
             </p>
           </div>
 
+          {/* For Non-Admin Paid Event: Register Code Entry Section appears BEFORE the seating plan */}
+          {!isAdmin && event.type === 'registration_required' && event.isPaid && (
+            <div
+              id="event-registration-code-section"
+              className="pt-4 border-t border-stone-200"
+            >
+              {!verifiedAdminCode ? (
+                <div className="bg-amber-50/80 p-5 rounded-2xl border border-amber-200 space-y-3">
+                  <h3 className="text-lg font-bold text-slate-900 mb-1 flex items-center gap-2">
+                    <KeyRound className="w-5 h-5 text-amber-700" />
+                    <span>{t.registerNow}</span>
+                  </h3>
+                  <p className="text-xs text-stone-600">
+                    {t.paidSwitchDesc}
+                  </p>
+
+                  {/* Error notification */}
+                  {errorMessage && (
+                    <div
+                      id="registration-error-box-top"
+                      className="p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs font-semibold flex items-center gap-2"
+                    >
+                      <AlertTriangle className="w-4 h-4 shrink-0" />
+                      <span>{errorMessage}</span>
+                    </div>
+                  )}
+
+                  <div className="space-y-3 p-4 bg-white rounded-xl border border-amber-300 shadow-xs">
+                    <label htmlFor={codeInputId} className="block text-xs font-bold text-amber-950">
+                      {t.enterEightDigitCode}
+                    </label>
+                    <div className="flex flex-wrap sm:flex-nowrap gap-2">
+                      <input
+                        id={codeInputId}
+                        type="text"
+                        maxLength={8}
+                        value={eightDigitCodeInput}
+                        onChange={(e) => setEightDigitCodeInput(e.target.value.replace(/\D/g, ''))}
+                        placeholder={t.codePlaceholder}
+                        className="flex-1 px-4 py-2.5 rounded-xl border border-amber-300 font-mono text-base font-bold tracking-widest text-slate-900 bg-white focus:outline-hidden focus:ring-2 focus:ring-amber-600 min-w-0"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleVerifyCode}
+                        className="px-4 sm:px-5 py-2.5 rounded-xl text-xs sm:text-sm font-bold bg-amber-700 hover:bg-amber-800 text-white transition-colors cursor-pointer shadow-xs shrink-0 whitespace-nowrap"
+                      >
+                        {t.verifyCodeBtn}
+                      </button>
+                    </div>
+                    <p className="text-[11px] text-amber-800/80">
+                      {t.paidCodeHelpText}
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <div className="p-3.5 bg-emerald-50 rounded-xl border border-emerald-200 flex flex-wrap sm:flex-nowrap items-center justify-between gap-2 text-xs text-emerald-900">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <span className="truncate">
+                      {t.codeVerifiedFor}
+                      <strong>{verifiedAdminCode.userName}</strong> ({verifiedAdminCode.partySize} {t.guestsCount})
+                    </span>
+                  </div>
+                  <span className="font-mono font-bold bg-emerald-100 px-2.5 py-1 rounded-lg text-emerald-800 shrink-0">
+                    {verifiedAdminCode.code}
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Seating Blueprint Section (only for registration required events) */}
           {event.type === 'registration_required' && event.blueprint && event.blueprint.elements.length > 0 && (
             <div className="pt-4 border-t border-stone-200">
@@ -609,7 +680,7 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
                 )}
               </div>
 
-              {/* Interactive Blueprint Canvas */}
+              {/* Interactive Blueprint Canvas (showAvailabilityBar is true for Admin only) */}
               <BlueprintCanvas
                 blueprint={event.blueprint}
                 registrations={eventRegistrations}
@@ -617,6 +688,7 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
                 onSelectElement={handleSelectSeatingElement}
                 language={language}
                 partySizeForHighlight={verifiedAdminCode ? verifiedAdminCode.partySize : partySize}
+                showAvailabilityBar={isAdmin}
               />
             </div>
           )}
@@ -644,7 +716,7 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
           )}
 
           {/* Registration Section for Members */}
-          {event.type === 'registration_required' && (
+          {event.type === 'registration_required' && (isAdmin || !event.isPaid || Boolean(verifiedAdminCode)) && (
             <div
               id="event-registration-box"
               className="pt-6 border-t border-stone-200 bg-stone-50/70 p-5 sm:p-6 rounded-2xl border"
@@ -654,11 +726,11 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
                 <span>{t.registerNow}</span>
               </h3>
               <p className="text-xs text-stone-500 mb-4">
-                {event.isPaid ? t.paidSwitchDesc : t.freeRegistrationDesc}
+                {event.isPaid && !verifiedAdminCode ? t.paidSwitchDesc : t.freeRegistrationDesc}
               </p>
 
-              {/* Error notification */}
-              {errorMessage && (
+              {/* Error notification for Admin or general form */}
+              {errorMessage && (isAdmin || !event.isPaid || verifiedAdminCode) && (
                 <div
                   id="registration-error-box"
                   className="mb-4 p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs font-semibold flex items-center gap-2"
@@ -668,8 +740,8 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
                 </div>
               )}
 
-              {/* Paid Event 8-Digit Code Entry Step */}
-              {event.isPaid && !verifiedAdminCode && (
+              {/* Paid Event Code Entry Step - Shown inside this box for Admin */}
+              {isAdmin && event.isPaid && !verifiedAdminCode && (
                 <div className="space-y-3 mb-5 p-4 bg-amber-50/80 rounded-xl border border-amber-200">
                   <label htmlFor={codeInputId} className="block text-xs font-bold text-amber-950">
                     {t.enterEightDigitCode}
@@ -698,8 +770,8 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
                 </div>
               )}
 
-              {/* When 8-digit code is verified */}
-              {event.isPaid && verifiedAdminCode && (
+              {/* When code is verified (shown for Admin here) */}
+              {isAdmin && event.isPaid && verifiedAdminCode && (
                 <div className="mb-5 p-3.5 bg-emerald-50 rounded-xl border border-emerald-200 flex flex-wrap sm:flex-nowrap items-center justify-between gap-2 text-xs text-emerald-900">
                   <div className="flex items-center gap-2 min-w-0">
                     <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />

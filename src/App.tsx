@@ -18,7 +18,7 @@ import {
   getUserLikes,
   setUserLikes,
   subscribeToRealtime,
-  generateRandom8DigitCode,
+  generateRandom4DigitCode,
   checkSeatConflict,
   syncFromSupabase,
   supabase,
@@ -328,11 +328,11 @@ export default function App() {
     partySize: number
   ): AdminReservationCode => {
     const currentCodes = getStoredAdminCodes();
-    let uniqueCode = generateRandom8DigitCode();
+    let uniqueCode = generateRandom4DigitCode();
 
     // Ensure code uniqueness
     while (currentCodes.some((c) => c.code === uniqueCode)) {
-      uniqueCode = generateRandom8DigitCode();
+      uniqueCode = generateRandom4DigitCode();
     }
 
     const newCodeRecord: AdminReservationCode = {

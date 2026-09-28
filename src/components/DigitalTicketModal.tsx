@@ -171,7 +171,7 @@ export const DigitalTicketModal: React.FC<DigitalTicketModalProps> = ({
               </button>
             </div>
 
-            {/* 8-Digit Admin Reservation Code if Paid Event */}
+            {/* 4-Digit Admin Reservation Code if Paid Event */}
             {registration.codeUsed && (
               <div className="bg-amber-50/70 rounded-xl p-3 border border-amber-200/80 flex items-center justify-between">
                 <div>
