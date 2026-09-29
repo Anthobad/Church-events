@@ -50,6 +50,7 @@ export interface Registration {
   checkedIn?: boolean;
   checkedInAt?: string;
   checkedInBy?: string;
+  isReservedByAdmin?: boolean;
 }
 
 export interface AdminReservationCode {

@@ -30,6 +30,7 @@ interface BlueprintCanvasProps {
   language: Language;
   partySizeForHighlight?: number; // Party size trying to register (to highlight optimal tables)
   showAvailabilityBar?: boolean;
+  isAdmin?: boolean;
 }
 
 export const BlueprintCanvas: React.FC<BlueprintCanvasProps> = ({
@@ -41,7 +42,8 @@ export const BlueprintCanvas: React.FC<BlueprintCanvasProps> = ({
   onSelectElement,
   language,
   partySizeForHighlight,
-  showAvailabilityBar = true
+  showAvailabilityBar = true,
+  isAdmin = false
 }) => {
   const t = translations[language];
   const [activeTool, setActiveTool] = useState<'select' | 'perimeter' | 'chair' | 'table_round' | 'table_rect' | 'label'>('select');
@@ -84,7 +86,7 @@ export const BlueprintCanvas: React.FC<BlueprintCanvasProps> = ({
   const getOccupancy = (elementId: string) => {
     const regs = registrations.filter((r) => r.elementId === elementId);
     const occupied = regs.reduce((sum, r) => sum + r.partySize, 0);
-    return { count: regs.length, totalPeople: occupied, attendees: regs.map(r => r.userName) };
+    return { count: regs.length, totalPeople: occupied, attendees: regs.map(r => r.userName), regs };
   };
 
   // Overall seating metrics across all elements for live real-time canvas indicator
@@ -1228,11 +1230,15 @@ export const BlueprintCanvas: React.FC<BlueprintCanvasProps> = ({
 
             const isCurrentlyDragging = isEditor && draggingElementId === element.id;
 
-            const { totalPeople } = getOccupancy(element.id);
+            const { totalPeople, regs } = getOccupancy(element.id);
             const remaining = element.capacity - totalPeople;
             const suitability = getSuitabilityStatus(element);
 
+            const isReservedByAdmin = regs.some((r) => r.isReservedByAdmin);
             const isFullyBooked = element.capacity > 0 && remaining <= 0;
+            const isBlockedOrFull = isFullyBooked || isReservedByAdmin;
+            const isNonAdminBlocked = !isEditor && !isAdmin && isBlockedOrFull;
+
             const isOptimal = suitability.status === 'optimal_exact' || suitability.status === 'optimal_partial';
             const isOversized = suitability.status === 'oversized_empty';
 
@@ -1248,6 +1254,16 @@ export const BlueprintCanvas: React.FC<BlueprintCanvasProps> = ({
               fillColor = '#f59e0b';
               strokeColor = '#ffffff';
               strokeWidth = 3.5;
+            } else if (isNonAdminBlocked) {
+              // Non-admin user: grayed out and neutral
+              fillColor = '#334155';
+              strokeColor = '#475569';
+              strokeWidth = 1.5;
+            } else if (isReservedByAdmin) {
+              // Admin POV: Reserved by Admin
+              fillColor = '#581c87';
+              strokeColor = '#c084fc';
+              strokeWidth = 2.5;
             } else if (isFullyBooked) {
               fillColor = '#881337';
               strokeColor = '#e11d48';
@@ -1271,9 +1287,15 @@ export const BlueprintCanvas: React.FC<BlueprintCanvasProps> = ({
               }
               if (isEditor) {
                 setEditorSelectedId(element.id);
-              } else if (onSelectElement) {
+              } else {
                 if (element.type === 'label') return;
-                onSelectElement(element);
+                // For non-admin user: if table is reserved/full, it is not clickable and cannot be selected
+                if (isNonAdminBlocked) {
+                  return;
+                }
+                if (onSelectElement) {
+                  onSelectElement(element);
+                }
               }
             };
 
@@ -1282,19 +1304,27 @@ export const BlueprintCanvas: React.FC<BlueprintCanvasProps> = ({
                 key={element.id}
                 id={`elem-${element.id}`}
                 onClick={handleClick}
-                onMouseEnter={() => setHoveredElementId(element.id)}
+                onMouseEnter={() => {
+                  if (!isNonAdminBlocked) setHoveredElementId(element.id);
+                }}
                 onMouseLeave={() => setHoveredElementId(null)}
                 onMouseDown={(e) => handleElementPointerDown(e, element)}
                 onTouchStart={(e) => handleElementPointerDown(e, element)}
                 className={`transition-opacity duration-150 ${
-                  isEditor ? 'cursor-move' : element.type !== 'label' ? 'cursor-pointer hover:opacity-90' : ''
+                  isEditor
+                    ? 'cursor-move'
+                    : isNonAdminBlocked
+                    ? 'cursor-not-allowed opacity-40 select-none'
+                    : element.type !== 'label'
+                    ? 'cursor-pointer hover:opacity-90'
+                    : ''
                 } ${isCurrentlyDragging ? 'opacity-80' : 'opacity-100'}`}
               >
                 {/* 1. Square Chair */}
                 {element.type === 'chair' && (() => {
                   const isCompact = element.width < 40 || element.height < 40;
                   const chairRemaining = Math.max(0, element.capacity - totalPeople);
-                  const isChairFull = element.capacity > 0 && chairRemaining <= 0;
+                  const isChairFull = isBlockedOrFull;
                   return (
                     <>
                       <rect
@@ -1313,7 +1343,7 @@ export const BlueprintCanvas: React.FC<BlueprintCanvasProps> = ({
                         y1={element.y + (isCompact ? 5 : 7)}
                         x2={element.x + element.width - 5}
                         y2={element.y + (isCompact ? 5 : 7)}
-                        stroke={isChairFull ? '#f87171' : '#34d399'}
+                        stroke={isNonAdminBlocked ? '#64748b' : isChairFull ? '#f87171' : '#34d399'}
                         strokeWidth={isCompact ? 1.5 : 2}
                         strokeLinecap="round"
                         opacity="0.85"
@@ -1321,8 +1351,8 @@ export const BlueprintCanvas: React.FC<BlueprintCanvasProps> = ({
                       {/* Chair Label */}
                       <text
                         x={element.x + element.width / 2}
-                        y={element.y + element.height / 2 - (isCompact ? 1 : 2)}
-                        fill="#ffffff"
+                        y={isNonAdminBlocked ? element.y + element.height / 2 : element.y + element.height / 2 - (isCompact ? 1 : 2)}
+                        fill={isNonAdminBlocked ? '#94a3b8' : '#ffffff'}
                         fontSize={isCompact ? "9" : "11"}
                         fontWeight="bold"
                         textAnchor="middle"
@@ -1330,30 +1360,34 @@ export const BlueprintCanvas: React.FC<BlueprintCanvasProps> = ({
                       >
                         {element.label}
                       </text>
-                      {/* Real-time Available Seats text */}
-                      <text
-                        x={element.x + element.width / 2}
-                        y={element.y + element.height - (isCompact ? 3.5 : 5)}
-                        fill={isChairFull ? '#fca5a5' : '#a7f3d0'}
-                        fontSize={isCompact ? "7" : "8.5"}
-                        fontWeight="800"
-                        textAnchor="middle"
-                      >
-                        {isChairFull
-                          ? (language === 'ar' ? '0 متاح' : language === 'fr' ? '0 disp.' : '0 left')
-                          : (element.capacity === 1
-                              ? (language === 'ar' ? '1 متاح' : language === 'fr' ? '1 disp.' : '1 left')
-                              : `${chairRemaining}/${element.capacity}`)}
-                      </text>
-                      {/* Real-time status indicator dot */}
-                      <circle
-                        cx={element.x + element.width - 5}
-                        cy={element.y + 5}
-                        r={isCompact ? 2.5 : 3.5}
-                        fill={isChairFull ? '#ef4444' : '#10b981'}
-                        stroke="#ffffff"
-                        strokeWidth="1"
-                      />
+                      {/* Real-time Available Seats text (hidden for non-admin when blocked) */}
+                      {!isNonAdminBlocked && (
+                        <text
+                          x={element.x + element.width / 2}
+                          y={element.y + element.height - (isCompact ? 3.5 : 5)}
+                          fill={isChairFull ? '#fca5a5' : '#a7f3d0'}
+                          fontSize={isCompact ? "7" : "8.5"}
+                          fontWeight="800"
+                          textAnchor="middle"
+                        >
+                          {isChairFull
+                            ? (isReservedByAdmin ? (language === 'ar' ? 'حجز مشرف' : 'Admin') : (language === 'ar' ? '0 متاح' : language === 'fr' ? '0 disp.' : '0 left'))
+                            : (element.capacity === 1
+                                ? (language === 'ar' ? '1 متاح' : language === 'fr' ? '1 disp.' : '1 left')
+                                : `${chairRemaining}/${element.capacity}`)}
+                        </text>
+                      )}
+                      {/* Real-time status indicator dot (hidden for non-admin when blocked) */}
+                      {!isNonAdminBlocked && (
+                        <circle
+                          cx={element.x + element.width - 5}
+                          cy={element.y + 5}
+                          r={isCompact ? 2.5 : 3.5}
+                          fill={isChairFull ? '#ef4444' : '#10b981'}
+                          stroke="#ffffff"
+                          strokeWidth="1"
+                        />
+                      )}
                     </>
                   );
                 })()}
@@ -1377,17 +1411,18 @@ export const BlueprintCanvas: React.FC<BlueprintCanvasProps> = ({
                       />
                       <text
                         x={cx}
-                        y={cy - (isCompact ? 3 : 7)}
-                        fill="#ffffff"
+                        y={isNonAdminBlocked ? cy : cy - (isCompact ? 3 : 7)}
+                        fill={isNonAdminBlocked ? '#94a3b8' : '#ffffff'}
                         fontSize={isCompact ? "9" : element.width > 120 ? "13" : "11"}
                         fontWeight="bold"
                         textAnchor="middle"
+                        dominantBaseline={isNonAdminBlocked ? "central" : "auto"}
                       >
                         {element.label}
                       </text>
 
-                      {/* Prominent Available Seats Badge */}
-                      {(() => {
+                      {/* Prominent Available Seats Badge - ONLY shown if NOT non-admin blocked */}
+                      {!isNonAdminBlocked && (() => {
                         const badgeW = isCompact ? 50 : (language === 'ar' ? 82 : language === 'fr' ? 80 : 72);
                         const badgeH = isCompact ? 13 : 17;
                         return (
@@ -1398,19 +1433,27 @@ export const BlueprintCanvas: React.FC<BlueprintCanvasProps> = ({
                               width={badgeW}
                               height={badgeH}
                               rx={badgeH / 2}
-                              fill={isFullyBooked ? 'rgba(239, 68, 68, 0.3)' : 'rgba(16, 185, 129, 0.3)'}
-                              stroke={isFullyBooked ? '#ef4444' : '#10b981'}
+                              fill={
+                                isReservedByAdmin
+                                  ? 'rgba(192, 132, 252, 0.3)'
+                                  : isFullyBooked
+                                  ? 'rgba(239, 68, 68, 0.3)'
+                                  : 'rgba(16, 185, 129, 0.3)'
+                              }
+                              stroke={isReservedByAdmin ? '#c084fc' : isFullyBooked ? '#ef4444' : '#10b981'}
                               strokeWidth="1"
                             />
                             <text
                               x={cx}
                               y={cy + (isCompact ? 10 : 14)}
-                              fill={isFullyBooked ? '#fca5a5' : '#a7f3d0'}
+                              fill={isReservedByAdmin ? '#e9d5ff' : isFullyBooked ? '#fca5a5' : '#a7f3d0'}
                               fontSize={isCompact ? "7.5" : "9.5"}
                               fontWeight="800"
                               textAnchor="middle"
                             >
-                              {isFullyBooked
+                              {isReservedByAdmin
+                                ? (language === 'ar' ? 'حجز مشرف' : 'Admin Lock')
+                                : isFullyBooked
                                 ? (language === 'fr' ? '0/' + element.capacity + ' Complet' : language === 'en' ? '0/' + element.capacity + ' Full' : '0/' + element.capacity + ' ممتلئة')
                                 : `${remaining}/${element.capacity} ${language === 'fr' ? 'dispo' : language === 'en' ? 'avail' : 'شاغر'}`}
                             </text>
@@ -1441,17 +1484,18 @@ export const BlueprintCanvas: React.FC<BlueprintCanvasProps> = ({
                       />
                       <text
                         x={cx}
-                        y={cy - (isCompact ? 4 : 8)}
-                        fill="#ffffff"
+                        y={isNonAdminBlocked ? cy : cy - (isCompact ? 4 : 8)}
+                        fill={isNonAdminBlocked ? '#94a3b8' : '#ffffff'}
                         fontSize={isCompact ? "10" : element.width > 160 ? "14" : "12"}
                         fontWeight="bold"
                         textAnchor="middle"
+                        dominantBaseline={isNonAdminBlocked ? "central" : "auto"}
                       >
                         {element.label}
                       </text>
 
-                      {/* Prominent Available Seats Badge */}
-                      {(() => {
+                      {/* Prominent Available Seats Badge - ONLY shown if NOT non-admin blocked */}
+                      {!isNonAdminBlocked && (() => {
                         const badgeW = isCompact ? (language === 'ar' ? 62 : 68) : (language === 'ar' ? 80 : language === 'fr' ? 88 : 80);
                         const badgeH = isCompact ? 14 : 18;
                         return (
@@ -1462,19 +1506,27 @@ export const BlueprintCanvas: React.FC<BlueprintCanvasProps> = ({
                               width={badgeW}
                               height={badgeH}
                               rx={badgeH / 2}
-                              fill={isFullyBooked ? 'rgba(239, 68, 68, 0.3)' : 'rgba(16, 185, 129, 0.3)'}
-                              stroke={isFullyBooked ? '#ef4444' : '#10b981'}
+                              fill={
+                                isReservedByAdmin
+                                  ? 'rgba(192, 132, 252, 0.3)'
+                                  : isFullyBooked
+                                  ? 'rgba(239, 68, 68, 0.3)'
+                                  : 'rgba(16, 185, 129, 0.3)'
+                              }
+                              stroke={isReservedByAdmin ? '#c084fc' : isFullyBooked ? '#ef4444' : '#10b981'}
                               strokeWidth="1"
                             />
                             <text
                               x={cx}
                               y={cy + (isCompact ? 11 : 14)}
-                              fill={isFullyBooked ? '#fca5a5' : '#a7f3d0'}
+                              fill={isReservedByAdmin ? '#e9d5ff' : isFullyBooked ? '#fca5a5' : '#a7f3d0'}
                               fontSize={isCompact ? "8" : "9.5"}
                               fontWeight="800"
                               textAnchor="middle"
                             >
-                              {isFullyBooked
+                              {isReservedByAdmin
+                                ? (language === 'ar' ? 'حجز مشرف' : 'Admin Lock')
+                                : isFullyBooked
                                 ? (language === 'fr' ? '0/' + element.capacity + ' Complet' : language === 'en' ? '0/' + element.capacity + ' Full' : '0/' + element.capacity + ' ممتلئة')
                                 : `${remaining}/${element.capacity} ${language === 'fr' ? 'places' : language === 'en' ? 'seats' : 'شاغر'}`}
                             </text>
@@ -1522,16 +1574,25 @@ export const BlueprintCanvas: React.FC<BlueprintCanvasProps> = ({
           const elem = blueprint.elements.find((e) => e.id === activeElemId);
           if (!elem || elem.type === 'label') return null;
 
-          const { totalPeople, attendees } = getOccupancy(elem.id);
+          const { totalPeople, attendees, regs } = getOccupancy(elem.id);
+          const isElemAdminReserved = regs.some((r) => r.isReservedByAdmin);
           const rem = Math.max(0, elem.capacity - totalPeople);
           const isFull = elem.capacity > 0 && rem <= 0;
+
+          // Non-admin user: if element is blocked or admin-reserved, suppress floating HUD
+          if (!isEditor && !isAdmin && (isFull || isElemAdminReserved)) {
+            return null;
+          }
+
           const isRTL = language === 'ar';
 
           const typeLabel = elem.type === 'chair'
             ? (language === 'ar' ? 'كرسي' : language === 'fr' ? 'Chaise' : 'Chair')
             : (language === 'ar' ? 'طاولة' : language === 'fr' ? 'Table' : 'Table');
 
-          const statusText = isFull
+          const statusText = isElemAdminReserved
+            ? (language === 'ar' ? 'محجوزة للإدارة' : language === 'fr' ? 'Réservée par l’administration' : 'Reserved by Admin (Hold)')
+            : isFull
             ? (language === 'ar'
                 ? `ممتلئة بالكامل (${elem.capacity}/${elem.capacity})`
                 : language === 'fr'

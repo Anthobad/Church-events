@@ -194,6 +194,21 @@ export interface Translations {
   readyForNextTicket: string;
   checkNextTicketBtn: string;
   showTicketAtDoorPrompt: string;
+  changeTableBtn: string;
+  changeTableTitle: string;
+  changeTableDesc: string;
+  currentTableLabel: string;
+  newTableLabel: string;
+  confirmChangeTable: string;
+  insufficientCapacity: string;
+  tableChangedSuccess: string;
+  reserveTableAdmin: string;
+  releaseTableAdmin: string;
+  reservedByAdminBadge: string;
+  tableReservedSuccess: string;
+  tableReleasedSuccess: string;
+  adminTableManagement: string;
+  seatedGuests: string;
 }
 
 export const translations: Record<Language, Translations> = {
@@ -362,8 +377,8 @@ export const translations: Record<Language, Translations> = {
     changeImage: 'تغيير الصورة',
     ticketVerificationTab: 'التحقق من التذاكر والدخول',
     verifyTicketTitle: 'فحص وتأكيد صلاحية التذاكر',
-    verifyTicketDesc: 'أدخل رمز التذكرة أو كود الحجز للتحقق الفوري ومنع تكرار الدخول عند البوابة.',
-    enterTicketCodePlaceholder: 'أدخل رمز التذكرة أو كود الحجز (مثال: 9305)...',
+    verifyTicketDesc: 'أدخل رمز التذكرة أو كود الحجز المكون من 4 أرقام للتحقق الفوري ومنع تكرار الدخول عند البوابة.',
+    enterTicketCodePlaceholder: 'أدخل رمز التذكرة أو كود الحجز (4 أرقام مثل 9305)...',
     verifyBtn: 'فحص الكود',
     verifying: 'جاري الفحص المباشر...',
     validTicketTitle: 'تذكرة صالحة - جاهزة للدخول',
@@ -390,7 +405,22 @@ export const translations: Record<Language, Translations> = {
     admissionConfirmedTitle: 'تم تأكيد الدخول وتمرير التذكرة بنجاح',
     readyForNextTicket: 'جاهز لفحص التذكرة التالية',
     checkNextTicketBtn: 'فحص تذكرة أخرى',
-    showTicketAtDoorPrompt: 'أظهر هذه التذكرة أو الرمز للمسؤول عند مدخل الفعالية'
+    showTicketAtDoorPrompt: 'أظهر هذه التذكرة أو الرمز للمسؤول عند مدخل الفعالية',
+    changeTableBtn: 'تغيير الطاولة',
+    changeTableTitle: 'تغيير الطاولة / نقل المشارك',
+    changeTableDesc: 'اختر طاولة بديلة تتسع لعدد أفراد المشارك بالكامل.',
+    currentTableLabel: 'الطاولة الحالية:',
+    newTableLabel: 'اختر الطاولة البديلة:',
+    confirmChangeTable: 'تأكيد النقل للطاولة الجديدة',
+    insufficientCapacity: 'السعة غير كافية لعدد الأفراد',
+    tableChangedSuccess: 'تم تغيير الطاولة بنجاح!',
+    reserveTableAdmin: 'حجز / قفل الطاولة للإدارة',
+    releaseTableAdmin: 'إلغاء قفل الطاولة',
+    reservedByAdminBadge: 'محجوزة للإدارة',
+    tableReservedSuccess: 'تم حجز الطاولة بنجاح!',
+    tableReleasedSuccess: 'تم إلغاء حجز الطاولة!',
+    adminTableManagement: 'إدارة الطاولات للمشرف',
+    seatedGuests: 'المسجلون على هذه الطاولة'
   },
   en: {
     eventsTitle: 'Events',
@@ -557,8 +587,8 @@ export const translations: Record<Language, Translations> = {
     changeImage: 'Change Image',
     ticketVerificationTab: 'Ticket Verification & Entry',
     verifyTicketTitle: 'Verify & Validate Tickets',
-    verifyTicketDesc: 'Enter the ticket code or reservation code for instant validation and duplication prevention at the entrance.',
-    enterTicketCodePlaceholder: 'Enter ticket code or reservation code (e.g. 9305)...',
+    verifyTicketDesc: 'Enter the 4-digit ticket code or reservation code for instant validation and duplication prevention at the entrance.',
+    enterTicketCodePlaceholder: 'Enter 4-digit ticket or reservation code (e.g. 9305)...',
     verifyBtn: 'Verify Code',
     verifying: 'Checking live database...',
     validTicketTitle: 'Valid Ticket - Ready for Entry',
@@ -585,7 +615,22 @@ export const translations: Record<Language, Translations> = {
     admissionConfirmedTitle: 'Entry Confirmed — Ticket Admitted',
     readyForNextTicket: 'Ready to verify next attendee',
     checkNextTicketBtn: 'Scan Next Ticket',
-    showTicketAtDoorPrompt: 'Present this ticket or code to the usher at the entrance'
+    showTicketAtDoorPrompt: 'Present this ticket or code to the usher at the entrance',
+    changeTableBtn: 'Change Table',
+    changeTableTitle: 'Change Table / Reassign Seat',
+    changeTableDesc: 'Select an available table with sufficient capacity for the attendee and their party.',
+    currentTableLabel: 'Current Table:',
+    newTableLabel: 'Select New Table:',
+    confirmChangeTable: 'Confirm Table Change',
+    insufficientCapacity: 'Insufficient capacity for party',
+    tableChangedSuccess: 'Table successfully changed!',
+    reserveTableAdmin: 'Reserve / Block Table',
+    releaseTableAdmin: 'Release / Unblock Table',
+    reservedByAdminBadge: 'Reserved by Admin',
+    tableReservedSuccess: 'Table reserved successfully!',
+    tableReleasedSuccess: 'Table released successfully!',
+    adminTableManagement: 'Admin Table Controls',
+    seatedGuests: 'Seated on this Table'
   },
   fr: {
     eventsTitle: 'Événements',
@@ -752,8 +797,8 @@ export const translations: Record<Language, Translations> = {
     changeImage: 'Changer l’image',
     ticketVerificationTab: 'Vérification des billets & Entrée',
     verifyTicketTitle: 'Vérifier la validité des billets',
-    verifyTicketDesc: 'Saisissez le code du billet ou de réservation pour une vérification instantanée et éviter les doublons à l\'entrée.',
-    enterTicketCodePlaceholder: 'Entrez le code de billet ou de réservation (ex. 9305)...',
+    verifyTicketDesc: 'Saisissez le code à 4 chiffres du billet ou de réservation pour une vérification instantanée à l\'entrée.',
+    enterTicketCodePlaceholder: 'Entrez le code à 4 chiffres du billet ou de réservation (ex. 9305)...',
     verifyBtn: 'Vérifier le code',
     verifying: 'Vérification en direct...',
     validTicketTitle: 'Billet valide - Prêt pour l\'entrée',
@@ -780,6 +825,21 @@ export const translations: Record<Language, Translations> = {
     admissionConfirmedTitle: 'Entrée confirmée — Billet validé',
     readyForNextTicket: 'Prêt pour le participant suivant',
     checkNextTicketBtn: 'Vérifier un autre billet',
-    showTicketAtDoorPrompt: 'Présentez ce billet ou ce code au responsable à l\'entrée'
+    showTicketAtDoorPrompt: 'Présentez ce billet ou ce code au responsable à l\'entrée',
+    changeTableBtn: 'Changer de table',
+    changeTableTitle: 'Changer de table / Réassigner la place',
+    changeTableDesc: 'Sélectionnez une table disponible avec une capacité suffisante pour le participant et son groupe.',
+    currentTableLabel: 'Table actuelle :',
+    newTableLabel: 'Sélectionner la nouvelle table :',
+    confirmChangeTable: 'Confirmer le changement de table',
+    insufficientCapacity: 'Capacité insuffisante pour le groupe',
+    tableChangedSuccess: 'Table modifiée avec succès !',
+    reserveTableAdmin: 'Réserver / Bloquer la table',
+    releaseTableAdmin: 'Libérer / Débloquer la table',
+    reservedByAdminBadge: 'Réservée par l’administration',
+    tableReservedSuccess: 'Table réservée avec succès !',
+    tableReleasedSuccess: 'Table libérée avec succès !',
+    adminTableManagement: 'Gestion de table pour admin',
+    seatedGuests: 'Participants assignés à cette table'
   }
 };

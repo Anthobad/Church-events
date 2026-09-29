@@ -1,4 +1,4 @@
-import { ChurchEvent, Registration, AdminReservationCode, Language } from '../types';
+import { ChurchEvent, Registration, AdminReservationCode, Language, SeatingElement } from '../types';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
 // The ONLY key persisted in localStorage is the user's selected language
@@ -146,6 +146,9 @@ export function rowToEvent(row: any): ChurchEvent {
 
 export function registrationToRow(reg: Registration) {
   let dbCode = reg.codeUsed || '';
+  if (reg.isReservedByAdmin) {
+    dbCode = `ADMIN_RESERVED__${dbCode}`;
+  }
   if (reg.checkedIn) {
     const at = reg.checkedInAt || new Date().toISOString();
     const by = reg.checkedInBy || 'Admin';
@@ -167,7 +170,15 @@ export function registrationToRow(reg: Registration) {
 }
 
 export function rowToRegistration(row: any): Registration {
-  const rawCode = String(row.code_used || '');
+  let rawCode = String(row.code_used || '');
+  let isReservedByAdmin = Boolean(rawCode.includes('ADMIN_RESERVED'));
+  if (isReservedByAdmin) {
+    rawCode = rawCode.replace('ADMIN_RESERVED__', '').replace('ADMIN_RESERVED', '');
+  }
+  if (row.user_name === 'Reserved by Admin') {
+    isReservedByAdmin = true;
+  }
+
   let checkedIn = Boolean(row.checked_in);
   let checkedInAt: string | undefined = row.checked_in_at ? String(row.checked_in_at) : undefined;
   let checkedInBy: string | undefined = row.checked_in_by ? String(row.checked_in_by) : undefined;
@@ -199,7 +210,8 @@ export function rowToRegistration(row: any): Registration {
     registeredAt: row.registered_at || new Date().toISOString(),
     checkedIn,
     checkedInAt,
-    checkedInBy
+    checkedInBy,
+    isReservedByAdmin
   };
 }
 
@@ -412,6 +424,113 @@ export async function saveSingleRegistrationToSupabase(reg: Registration): Promi
     console.error('Supabase save registration exception:', err);
     return false;
   }
+}
+
+/**
+ * Change / Reassign attendee's table in real-time
+ */
+export async function updateRegistrationTable(
+  registrationId: string,
+  newElementId: string,
+  newElementLabel: string
+): Promise<boolean> {
+  const currentRegs = inMemoryRegistrations;
+  const targetReg = currentRegs.find((r) => r.id === registrationId);
+  if (!targetReg) return false;
+
+  const updatedReg: Registration = {
+    ...targetReg,
+    elementId: newElementId,
+    elementLabel: newElementLabel
+  };
+
+  const updatedList = currentRegs.map((r) => (r.id === registrationId ? updatedReg : r));
+  saveStoredRegistrations(updatedList);
+
+  if (supabase) {
+    try {
+      await supabase
+        .from('church_registrations')
+        .update({
+          element_id: newElementId,
+          element_label: newElementLabel
+        })
+        .eq('id', registrationId);
+    } catch (e) {
+      console.warn('Update table supabase notice:', e);
+    }
+  }
+
+  // Also update corresponding admin code if any
+  if (targetReg.codeUsed) {
+    const codeRec = inMemoryCodes.find(
+      (c) => c.code === targetReg.codeUsed && c.eventId === targetReg.eventId
+    );
+    if (codeRec) {
+      codeRec.elementId = newElementId;
+      saveStoredAdminCodes(inMemoryCodes);
+    }
+  }
+
+  return true;
+}
+
+/**
+ * Admin directly reserves / blocks a table or seat
+ */
+export async function adminReserveTable(
+  eventId: string,
+  element: SeatingElement,
+  customLabel?: string
+): Promise<Registration> {
+  const newReg: Registration = {
+    id: 'admin-res-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
+    eventId,
+    userName: customLabel || 'Reserved by Admin',
+    userPhone: '',
+    partySize: element.capacity,
+    elementId: element.id,
+    elementLabel: element.label,
+    isPaid: true,
+    registeredAt: new Date().toISOString(),
+    checkedIn: false,
+    isReservedByAdmin: true
+  };
+
+  const current = getStoredRegistrations();
+  const updated = [...current, newReg];
+  saveStoredRegistrations(updated);
+
+  if (supabase) {
+    await saveSingleRegistrationToSupabase(newReg);
+  }
+
+  return newReg;
+}
+
+/**
+ * Admin releases / unblocks a table
+ */
+export async function adminReleaseTable(
+  eventId: string,
+  elementId: string
+): Promise<boolean> {
+  const current = getStoredRegistrations();
+  const toDelete = current.filter((r) => r.eventId === eventId && r.elementId === elementId);
+  const remaining = current.filter((r) => !(r.eventId === eventId && r.elementId === elementId));
+  saveStoredRegistrations(remaining);
+
+  if (supabase && toDelete.length > 0) {
+    for (const reg of toDelete) {
+      try {
+        await supabase.from('church_registrations').delete().eq('id', reg.id);
+      } catch (e) {
+        console.warn('Supabase delete registration notice:', e);
+      }
+    }
+  }
+
+  return true;
 }
 
 export function getStoredAdminCodes(): AdminReservationCode[] {

@@ -17,7 +17,10 @@ import {
   cleanTicketCode,
   TicketVerificationResult,
   syncFromSupabase,
-  subscribeToRealtime
+  subscribeToRealtime,
+  updateRegistrationTable,
+  adminReserveTable,
+  adminReleaseTable
 } from '../services/storage';
 import { BlueprintCanvas } from './BlueprintCanvas';
 import { DigitalTicketModal } from './DigitalTicketModal';
@@ -225,6 +228,79 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
     setAdminTab(tab);
   };
 
+  // Table re-assignment & admin table reservation states
+  const [reassigningRegistration, setReassigningRegistration] = useState<Registration | null>(null);
+  const [targetNewElementId, setTargetNewElementId] = useState<string | null>(null);
+  const [isUpdatingTable, setIsUpdatingTable] = useState(false);
+  const blueprintSectionRef = useRef<HTMLDivElement | null>(null);
+
+  // Auto-scroll directly to seating canvas when changing tables so user never has to scroll upwards
+  useEffect(() => {
+    if (reassigningRegistration && blueprintSectionRef.current) {
+      blueprintSectionRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }, [reassigningRegistration]);
+
+  const handleExecuteTableChange = async () => {
+    if (!reassigningRegistration || !targetNewElementId || !event.blueprint) return;
+    const newElem = event.blueprint.elements.find((e) => e.id === targetNewElementId);
+    if (!newElem) return;
+
+    setIsUpdatingTable(true);
+    try {
+      await updateRegistrationTable(reassigningRegistration.id, newElem.id, newElem.label);
+      const data = await syncFromSupabase();
+      if (data?.registrations && onRegistrationsSynced) {
+        onRegistrationsSynced(data.registrations);
+      }
+      setVerificationFeedback({
+        type: 'success',
+        message: `${t.tableChangedSuccess} (${reassigningRegistration.userName} ➔ ${newElem.label})`
+      });
+      if (selectedElement?.id === reassigningRegistration.elementId) {
+        setSelectedElement(newElem);
+      }
+      setReassigningRegistration(null);
+      setTargetNewElementId(null);
+    } catch (err) {
+      console.error('Error changing table:', err);
+    } finally {
+      setIsUpdatingTable(false);
+    }
+  };
+
+  const handleReserveAdminTable = async (element: SeatingElement) => {
+    try {
+      await adminReserveTable(event.id, element);
+      const data = await syncFromSupabase();
+      if (data?.registrations && onRegistrationsSynced) {
+        onRegistrationsSynced(data.registrations);
+      }
+      setVerificationFeedback({
+        type: 'success',
+        message: `${t.tableReservedSuccess} (${element.label})`
+      });
+    } catch (err) {
+      console.error('Error reserving table:', err);
+    }
+  };
+
+  const handleReleaseAdminTable = async (elementId: string) => {
+    try {
+      await adminReleaseTable(event.id, elementId);
+      const data = await syncFromSupabase();
+      if (data?.registrations && onRegistrationsSynced) {
+        onRegistrationsSynced(data.registrations);
+      }
+      setVerificationFeedback({
+        type: 'success',
+        message: t.tableReleasedSuccess
+      });
+    } catch (err) {
+      console.error('Error releasing table:', err);
+    }
+  };
+
   // Filter registrations and codes for this specific event
   const eventRegistrations = registrations.filter((r) => r.eventId === event.id);
   const eventCodes = adminCodes.filter((c) => c.eventId === event.id);
@@ -415,6 +491,19 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
   // Handle Seating Selection
   const handleSelectSeatingElement = (element: SeatingElement) => {
     setErrorMessage(null);
+
+    // Non-admin user cannot select an admin-reserved or full table
+    if (!isAdmin) {
+      const elementRegs = eventRegistrations.filter((r) => r.elementId === element.id);
+      const isReservedByAdmin = elementRegs.some((r) => r.isReservedByAdmin);
+      const occupied = elementRegs.reduce((sum, r) => sum + r.partySize, 0);
+      const remaining = element.capacity - occupied;
+      if (isReservedByAdmin || remaining <= 0) {
+        setSelectedElement(null);
+        return;
+      }
+    }
+
     setSelectedElement(element);
 
     if (element.type === 'chair') {
@@ -460,6 +549,15 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
     if (event.blueprint && !selectedElement) {
       setErrorMessage(t.selectASeatOrTable);
       return;
+    }
+
+    if (!isAdmin && selectedElement) {
+      const elementRegs = eventRegistrations.filter((r) => r.elementId === selectedElement.id);
+      const isReservedByAdmin = elementRegs.some((r) => r.isReservedByAdmin);
+      if (isReservedByAdmin) {
+        setErrorMessage(t.tableFull);
+        return;
+      }
     }
 
     if (event.isPaid) {
@@ -771,16 +869,300 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
                 )}
               </div>
 
-              {/* Interactive Blueprint Canvas (showAvailabilityBar is true for Admin only) */}
-              <BlueprintCanvas
-                blueprint={event.blueprint}
-                registrations={eventRegistrations}
-                selectedElementId={selectedElement?.id}
-                onSelectElement={handleSelectSeatingElement}
-                language={language}
-                partySizeForHighlight={verifiedAdminCode ? verifiedAdminCode.partySize : partySize}
-                showAvailabilityBar={isAdmin}
-              />
+              {/* Interactive Blueprint Canvas & Change Table Overlay Container */}
+              <div
+                id="blueprint-canvas-viewport-wrapper"
+                ref={blueprintSectionRef}
+                className="relative w-full rounded-2xl overflow-hidden min-h-[460px] sm:min-h-[500px]"
+              >
+                <BlueprintCanvas
+                  blueprint={event.blueprint}
+                  registrations={eventRegistrations}
+                  selectedElementId={selectedElement?.id}
+                  onSelectElement={handleSelectSeatingElement}
+                  language={language}
+                  partySizeForHighlight={verifiedAdminCode ? verifiedAdminCode.partySize : partySize}
+                  showAvailabilityBar={isAdmin}
+                  isAdmin={isAdmin}
+                />
+
+                {/* Change Attendee Table / Reassign Seat Popup directly on top of the canvas */}
+                {reassigningRegistration && event.blueprint && (
+                  <div
+                    id="reassign-table-canvas-overlay"
+                    className="absolute inset-0 z-40 flex items-center justify-center p-2.5 sm:p-4 bg-slate-950/85 backdrop-blur-md rounded-2xl overflow-y-auto animate-in fade-in zoom-in-95 duration-200"
+                  >
+                    <div className="relative bg-white rounded-3xl max-w-lg w-full p-4 sm:p-5 shadow-2xl border border-stone-200 space-y-3.5 max-h-[96%] flex flex-col my-auto">
+                      {/* Header */}
+                      <div className="flex items-center justify-between border-b border-stone-100 pb-2.5 shrink-0">
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-9 h-9 rounded-xl bg-amber-100 text-amber-800 flex items-center justify-center font-bold shrink-0">
+                            <RotateCcw className="w-5 h-5" />
+                          </div>
+                          <div className="min-w-0">
+                            <h3 className="text-base font-extrabold text-slate-900 truncate">
+                              {t.changeTableTitle}
+                            </h3>
+                            <p className="text-xs text-stone-500 truncate">
+                              <strong>{reassigningRegistration.userName}</strong> &bull; {reassigningRegistration.partySize} {t.personUnit}
+                            </p>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setReassigningRegistration(null);
+                            setTargetNewElementId(null);
+                          }}
+                          className="p-1.5 text-stone-400 hover:text-stone-700 hover:bg-stone-100 rounded-full cursor-pointer"
+                        >
+                          <X className="w-5 h-5" />
+                        </button>
+                      </div>
+
+                      {/* Current Table Summary */}
+                      <div className="p-2.5 bg-amber-50/80 rounded-xl border border-amber-200 text-xs flex items-center justify-between text-amber-950 shrink-0">
+                        <span className="font-semibold">{t.currentTableLabel}</span>
+                        <span className="font-bold font-mono px-2.5 py-0.5 rounded bg-amber-200 text-amber-900">
+                          {reassigningRegistration.elementLabel || 'None'}
+                        </span>
+                      </div>
+
+                      <p className="text-xs text-stone-600 shrink-0">
+                        {t.changeTableDesc}
+                      </p>
+
+                      {/* List of Blueprint Tables/Chairs */}
+                      <div className="flex-1 overflow-y-auto space-y-2 pe-1 max-h-56 sm:max-h-64 min-h-[140px]">
+                        {event.blueprint.elements
+                          .filter((elem) => elem.type !== 'label')
+                          .map((elem) => {
+                            const isCurrent = elem.id === reassigningRegistration.elementId;
+
+                            // Occupancy excluding reassigningRegistration
+                            const otherRegsOnElem = eventRegistrations.filter(
+                              (r) => r.elementId === elem.id && r.id !== reassigningRegistration.id
+                            );
+                            const isElemAdminReserved = otherRegsOnElem.some((r) => r.isReservedByAdmin);
+                            const otherOcc = otherRegsOnElem.reduce((sum, r) => sum + r.partySize, 0);
+                            const availableSpots = Math.max(0, elem.capacity - otherOcc);
+
+                            // Must allow reassigningRegistration's partySize and not be admin-reserved
+                            const canAccommodate = !isElemAdminReserved && availableSpots >= reassigningRegistration.partySize;
+                            const isSelected = targetNewElementId === elem.id;
+
+                            return (
+                              <button
+                                key={elem.id}
+                                type="button"
+                                disabled={isCurrent || !canAccommodate}
+                                onClick={() => setTargetNewElementId(elem.id)}
+                                className={`w-full text-start p-3 rounded-xl border text-xs transition-all flex items-center justify-between gap-3 ${
+                                  isCurrent
+                                    ? 'bg-stone-100 border-stone-200 text-stone-400 cursor-not-allowed opacity-60'
+                                    : isElemAdminReserved
+                                    ? 'bg-purple-50/50 border-purple-200 text-purple-900 cursor-not-allowed opacity-60'
+                                    : !canAccommodate
+                                    ? 'bg-red-50/40 border-red-200 text-red-700 cursor-not-allowed opacity-60'
+                                    : isSelected
+                                    ? 'bg-emerald-50 border-emerald-500 ring-2 ring-emerald-500 text-emerald-950 shadow-xs cursor-pointer'
+                                    : 'bg-white border-stone-200 hover:border-emerald-300 hover:bg-stone-50 text-slate-900 cursor-pointer'
+                                }`}
+                              >
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <span className="font-extrabold text-sm text-slate-900">{elem.label}</span>
+                                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-stone-100 text-stone-600 font-semibold">
+                                      {elem.type.startsWith('table') ? t.table : t.chair} • {t.capacity}: {elem.capacity}
+                                    </span>
+                                    {isCurrent && (
+                                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 font-bold">
+                                        {t.currentTableLabel}
+                                      </span>
+                                    )}
+                                    {isElemAdminReserved && (
+                                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-100 text-purple-800 font-bold">
+                                        {t.reservedByAdminBadge}
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div className="text-[11px] mt-0.5 text-stone-500">
+                                    {isCurrent ? (
+                                      <span className="font-semibold text-amber-700">
+                                        {language === 'ar' ? 'الطاولة المعينة حالياً للمشارك' : language === 'fr' ? 'Actuellement assigné' : 'Currently assigned to attendee'}
+                                      </span>
+                                    ) : isElemAdminReserved ? (
+                                      <span className="text-purple-700 font-semibold">
+                                        ✕ {language === 'ar' ? 'محجوزة للإدارة (غير متاحة)' : language === 'fr' ? 'Réservée par l’administration' : 'Reserved by Admin (Hold - Not available)'}
+                                      </span>
+                                    ) : elem.capacity < reassigningRegistration.partySize ? (
+                                      <span className="text-red-600 font-semibold">
+                                        ✕ {language === 'ar'
+                                            ? `سعة الطاولة صغيرة (${elem.capacity} مقاعد، والمشارك يحتاج ${reassigningRegistration.partySize})`
+                                            : language === 'fr'
+                                            ? `Capacité trop petite (${elem.capacity} places, groupe de ${reassigningRegistration.partySize})`
+                                            : `Table capacity too small (${elem.capacity} seats max, party requires ${reassigningRegistration.partySize})`}
+                                      </span>
+                                    ) : canAccommodate ? (
+                                      <span className="text-emerald-700 font-semibold">
+                                        ✓ {language === 'ar'
+                                            ? `تتسع لـ ${reassigningRegistration.partySize} أفراد (${availableSpots}/${elem.capacity} مقعد متاح)`
+                                            : language === 'fr'
+                                            ? `Accueille ${reassigningRegistration.partySize} pers. (${availableSpots}/${elem.capacity} places dispo)`
+                                            : `Accommodates ${reassigningRegistration.partySize} people (${availableSpots}/${elem.capacity} seats left)`}
+                                      </span>
+                                    ) : (
+                                      <span className="text-red-600 font-semibold">
+                                        ✕ {language === 'ar'
+                                            ? `المتبقي ${availableSpots} مقاعد فقط (المشارك يحتاج ${reassigningRegistration.partySize})`
+                                            : language === 'fr'
+                                            ? `Seulement ${availableSpots} places libres (${reassigningRegistration.partySize} nécessaires)`
+                                            : `Insufficient seats left (${availableSpots}/${elem.capacity} available, requires ${reassigningRegistration.partySize})`}
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+
+                                <div className="shrink-0">
+                                  {isSelected && (
+                                    <div className="w-5 h-5 rounded-full bg-emerald-600 text-white flex items-center justify-center">
+                                      <Check className="w-3.5 h-3.5" />
+                                    </div>
+                                  )}
+                                </div>
+                              </button>
+                            );
+                          })}
+                      </div>
+
+                      {/* Modal Footer */}
+                      <div className="pt-3 border-t border-stone-100 flex items-center justify-end gap-2.5 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setReassigningRegistration(null);
+                            setTargetNewElementId(null);
+                          }}
+                          className="px-4 py-2 rounded-xl text-xs font-bold text-stone-600 hover:bg-stone-100 transition-colors cursor-pointer"
+                        >
+                          {t.cancelBtn}
+                        </button>
+                        <button
+                          type="button"
+                          disabled={!targetNewElementId || isUpdatingTable}
+                          onClick={handleExecuteTableChange}
+                          className="px-5 py-2 rounded-xl text-xs sm:text-sm font-bold bg-amber-700 hover:bg-amber-800 disabled:opacity-50 disabled:cursor-not-allowed text-white transition-all shadow-md cursor-pointer flex items-center gap-1.5"
+                        >
+                          {isUpdatingTable ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                          ) : (
+                            <Check className="w-4 h-4" />
+                          )}
+                          <span>{t.confirmChangeTable}</span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Admin Table Management Panel when table selected */}
+              {isAdmin && selectedElement && selectedElement.type !== 'label' && (() => {
+                const elementRegs = eventRegistrations.filter((r) => r.elementId === selectedElement.id);
+                const isTableAdminReserved = elementRegs.some((r) => r.isReservedByAdmin);
+                const totalOccupied = elementRegs.reduce((sum, r) => sum + r.partySize, 0);
+                const remainingSeats = Math.max(0, selectedElement.capacity - totalOccupied);
+
+                return (
+                  <div className="mt-3.5 p-4 bg-slate-900 text-white rounded-2xl border border-slate-800 shadow-md animate-in fade-in duration-150">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-extrabold text-base text-amber-400">
+                            {selectedElement.label}
+                          </span>
+                          <span className="text-xs px-2.5 py-0.5 rounded-full bg-slate-800 text-slate-300 font-semibold border border-slate-700">
+                            {selectedElement.type.startsWith('table') ? t.table : t.chair} • {t.capacity}: {selectedElement.capacity}
+                          </span>
+                          {isTableAdminReserved && (
+                            <span className="text-xs px-2.5 py-0.5 rounded-full bg-purple-900/90 text-purple-200 border border-purple-600 font-bold">
+                              {t.reservedByAdminBadge}
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs text-slate-400 mt-1">
+                          {totalOccupied > 0 ? (
+                            <span>{t.seatedGuests}: {totalOccupied} / {selectedElement.capacity} {t.personUnit} ({remainingSeats} {t.seatsLeft})</span>
+                          ) : (
+                            <span className="text-emerald-400">✓ {selectedElement.capacity} {t.seatsLeft}</span>
+                          )}
+                        </p>
+                      </div>
+
+                      {/* Admin Actions for Selected Table */}
+                      <div className="flex flex-wrap items-center gap-2">
+                        {isTableAdminReserved ? (
+                          <button
+                            type="button"
+                            onClick={() => handleReleaseAdminTable(selectedElement.id)}
+                            className="px-3.5 py-2 rounded-xl text-xs font-bold bg-purple-600 hover:bg-purple-700 text-white transition-colors cursor-pointer flex items-center gap-1.5 shadow-xs"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                            <span>{t.releaseTableAdmin}</span>
+                          </button>
+                        ) : elementRegs.length === 0 ? (
+                          <button
+                            type="button"
+                            onClick={() => handleReserveAdminTable(selectedElement)}
+                            className="px-3.5 py-2 rounded-xl text-xs font-bold bg-purple-600 hover:bg-purple-700 text-white transition-colors cursor-pointer flex items-center gap-1.5 shadow-xs"
+                          >
+                            <ShieldAlert className="w-3.5 h-3.5" />
+                            <span>{t.reserveTableAdmin}</span>
+                          </button>
+                        ) : null}
+                      </div>
+                    </div>
+
+                    {/* Registered attendees on this table */}
+                    {elementRegs.filter((r) => !r.isReservedByAdmin).length > 0 && (
+                      <div className="mt-3 pt-3 border-t border-slate-800 space-y-2">
+                        <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
+                          {t.seatedGuests}:
+                        </span>
+                        <div className="space-y-1.5">
+                          {elementRegs.filter((r) => !r.isReservedByAdmin).map((reg) => (
+                            <div
+                              key={reg.id}
+                              className="flex flex-wrap items-center justify-between gap-2 p-2.5 rounded-xl bg-slate-800/90 border border-slate-700/80 text-xs"
+                            >
+                              <div className="flex flex-wrap items-center gap-2 min-w-0">
+                                <span className="font-bold text-white text-sm truncate">{reg.userName}</span>
+                                <span className="text-[11px] px-2 py-0.5 rounded-full bg-slate-700 text-amber-300 font-mono font-bold">
+                                  {reg.partySize} {t.personUnit}
+                                </span>
+                                {reg.userPhone && (
+                                  <span className="text-[11px] text-slate-400 truncate">{reg.userPhone}</span>
+                                )}
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setReassigningRegistration(reg);
+                                  setTargetNewElementId(null);
+                                }}
+                                className="px-3 py-1.5 rounded-xl text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white transition-colors cursor-pointer flex items-center gap-1.5 shrink-0 shadow-xs"
+                              >
+                                <RotateCcw className="w-3.5 h-3.5" />
+                                <span>{t.changeTableBtn}</span>
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
           )}
 
@@ -1159,6 +1541,7 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
                             if (verificationFeedback) setVerificationFeedback(null);
                           }}
                           placeholder={t.enterTicketCodePlaceholder}
+                          maxLength={8}
                           className="w-full px-4 py-3 rounded-xl border border-stone-300 text-sm font-mono font-bold text-slate-900 placeholder:font-sans placeholder:font-normal placeholder:text-stone-400 focus:outline-hidden focus:ring-2 focus:ring-amber-600 bg-stone-50/50"
                           autoComplete="off"
                         />
@@ -1530,31 +1913,58 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
                             </div>
 
                             <div className="flex items-center gap-2 w-full sm:w-auto justify-end shrink-0 pt-1 sm:pt-0 border-t sm:border-t-0 border-stone-100">
-                              {reg.checkedIn ? (
-                                <div className="flex items-center justify-between sm:justify-start w-full sm:w-auto gap-2">
-                                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800">
-                                    <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
-                                    <span>{t.statusPassed}</span>
-                                  </span>
-                                  <button
-                                    type="button"
-                                    onClick={() => handleUndoAdmission(reg.id)}
-                                    className="p-1 text-stone-400 hover:text-stone-700 hover:bg-stone-200/60 rounded-lg cursor-pointer transition-colors"
-                                    title={t.undoPass}
-                                  >
-                                    <RotateCcw className="w-3.5 h-3.5" />
-                                  </button>
-                                </div>
-                              ) : (
+                              {reg.isReservedByAdmin ? (
                                 <button
                                   type="button"
-                                  disabled={isCheckingIn}
-                                  onClick={() => handleConfirmAdmission(reg.id)}
-                                  className="w-full sm:w-auto px-4 py-2 sm:py-1.5 rounded-xl font-bold text-xs bg-slate-900 hover:bg-slate-800 text-white cursor-pointer transition-all flex items-center justify-center gap-1.5 shadow-xs"
+                                  onClick={() => handleReleaseAdminTable(reg.elementId!)}
+                                  className="px-2.5 py-1.5 rounded-xl font-bold text-xs bg-purple-100 hover:bg-purple-200 text-purple-900 border border-purple-300 cursor-pointer transition-colors flex items-center gap-1 shrink-0"
                                 >
-                                  <UserCheck className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                                  <span>{t.confirmEntryBtn}</span>
+                                  <X className="w-3.5 h-3.5" />
+                                  <span>{t.releaseTableAdmin}</span>
                                 </button>
+                              ) : (
+                                <>
+                                  {event.blueprint && event.blueprint.elements.length > 0 && (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setReassigningRegistration(reg);
+                                        setTargetNewElementId(null);
+                                      }}
+                                      className="px-2.5 py-1.5 rounded-xl font-bold text-xs bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 cursor-pointer transition-colors flex items-center gap-1 shrink-0"
+                                      title={t.changeTableBtn}
+                                    >
+                                      <RotateCcw className="w-3.5 h-3.5 text-amber-700" />
+                                      <span>{t.changeTableBtn}</span>
+                                    </button>
+                                  )}
+                                  {reg.checkedIn ? (
+                                    <div className="flex items-center justify-between sm:justify-start w-full sm:w-auto gap-2">
+                                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800">
+                                        <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                                        <span>{t.statusPassed}</span>
+                                      </span>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleUndoAdmission(reg.id)}
+                                        className="p-1 text-stone-400 hover:text-stone-700 hover:bg-stone-200/60 rounded-lg cursor-pointer transition-colors"
+                                        title={t.undoPass}
+                                      >
+                                        <RotateCcw className="w-3.5 h-3.5" />
+                                      </button>
+                                    </div>
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      disabled={isCheckingIn}
+                                      onClick={() => handleConfirmAdmission(reg.id)}
+                                      className="w-full sm:w-auto px-4 py-2 sm:py-1.5 rounded-xl font-bold text-xs bg-slate-900 hover:bg-slate-800 text-white cursor-pointer transition-all flex items-center justify-center gap-1.5 shadow-xs"
+                                    >
+                                      <UserCheck className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                                      <span>{t.confirmEntryBtn}</span>
+                                    </button>
+                                  )}
+                                </>
                               )}
                             </div>
                           </div>
@@ -1603,18 +2013,48 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
                                 {reg.elementLabel && ` &bull; ${t.seatLabelPrefix} ${reg.elementLabel}`}
                               </div>
                             </div>
-                            <div className="text-end shrink-0">
-                              <span
-                                className={`inline-block px-2 py-0.5 rounded-full text-[11px] font-semibold ${
-                                  reg.isPaid
-                                    ? 'bg-amber-100 text-amber-900'
-                                    : 'bg-emerald-100 text-emerald-900'
-                                }`}
-                              >
-                                {reg.isPaid ? t.paidBadge : t.freeBadge}
-                              </span>
-                              <div className="font-mono text-[10px] text-stone-400 mt-0.5">
-                                {getTicketDisplayCode(reg)}
+                            <div className="flex items-center gap-2 shrink-0">
+                              {reg.isReservedByAdmin ? (
+                                <button
+                                  type="button"
+                                  onClick={() => handleReleaseAdminTable(reg.elementId!)}
+                                  className="px-2.5 py-1 rounded-lg text-xs font-bold bg-purple-100 hover:bg-purple-200 text-purple-900 border border-purple-300 cursor-pointer transition-colors flex items-center gap-1"
+                                >
+                                  <X className="w-3.5 h-3.5" />
+                                  <span>{t.releaseTableAdmin}</span>
+                                </button>
+                              ) : (
+                                <>
+                                  {event.blueprint && event.blueprint.elements.length > 0 && (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setReassigningRegistration(reg);
+                                        setTargetNewElementId(null);
+                                      }}
+                                      className="px-2.5 py-1 rounded-lg text-xs font-bold bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 cursor-pointer transition-colors flex items-center gap-1"
+                                      title={t.changeTableBtn}
+                                    >
+                                      <RotateCcw className="w-3.5 h-3.5 text-amber-700" />
+                                      <span>{t.changeTableBtn}</span>
+                                    </button>
+                                  )}
+                                </>
+                              )}
+
+                              <div className="text-end">
+                                <span
+                                  className={`inline-block px-2 py-0.5 rounded-full text-[11px] font-semibold ${
+                                    reg.isPaid
+                                      ? 'bg-amber-100 text-amber-900'
+                                      : 'bg-emerald-100 text-emerald-900'
+                                  }`}
+                                >
+                                  {reg.isPaid ? t.paidBadge : t.freeBadge}
+                                </span>
+                                <div className="font-mono text-[10px] text-stone-400 mt-0.5">
+                                  {getTicketDisplayCode(reg)}
+                                </div>
                               </div>
                             </div>
                           </div>
