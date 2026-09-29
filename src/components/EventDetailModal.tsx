@@ -646,6 +646,7 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
     >
       <div
         id="event-detail-card"
+        dir={language === 'ar' ? 'rtl' : 'ltr'}
         className="relative w-full max-w-4xl bg-white rounded-3xl shadow-2xl border border-stone-200 overflow-hidden my-auto"
       >
         {/* Sticky Header / Close bar */}
@@ -722,38 +723,43 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
           </div>
         )}
 
-        <div className="p-4 sm:p-8 space-y-6">
+        <div className="p-3.5 sm:p-6 md:p-8 space-y-4 sm:space-y-6">
           {/* Title & Stats */}
-          <div>
-            <div className="flex flex-wrap items-center justify-between gap-3 mb-2">
-              <h1 className="text-xl sm:text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight break-words min-w-0 flex-1">
-                {event.title}
-              </h1>
+          <div className="space-y-2.5">
+            {/* Title: spans edge to edge */}
+            <h1 className="w-full text-xl sm:text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-snug break-words text-start">
+              {event.title}
+            </h1>
 
-              {/* Real-time stats: Likes & Views */}
-              <div className="flex items-center gap-2 sm:gap-3 shrink-0">
-                <span className="inline-flex items-center gap-1.5 text-xs sm:text-sm font-medium text-stone-500 bg-stone-50 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-full border border-stone-200">
-                  <Eye className="w-3.5 sm:w-4 h-3.5 sm:h-4 text-stone-400 shrink-0" />
-                  <span>{event.views} {t.views}</span>
-                </span>
+            {/* Real-time stats: Likes & Views placed under title on small devices, aligned with language */}
+            <div className="flex items-center gap-2 sm:gap-2.5 flex-wrap justify-start">
+              <span
+                className="inline-flex items-center gap-1.5 text-xs font-medium text-stone-600 bg-stone-100/90 px-2.5 py-1 rounded-full border border-stone-200/80 shrink-0"
+                title={`${event.views} ${t.views}`}
+              >
+                <Eye className="w-3.5 h-3.5 text-stone-400 shrink-0" />
+                <span className="font-bold text-stone-800">{event.views}</span>
+                <span className="text-[11px] text-stone-500 font-normal">{t.views}</span>
+              </span>
 
-                <button
-                  type="button"
-                  onClick={() => onToggleLike(event.id)}
-                  className={`inline-flex items-center gap-1.5 px-3 sm:px-3.5 py-1 sm:py-1.5 rounded-full text-xs sm:text-sm font-semibold transition-all cursor-pointer ${
-                    isLiked
-                      ? 'bg-rose-50 text-rose-600 border border-rose-200 shadow-2xs'
-                      : 'bg-stone-100 hover:bg-rose-50 text-stone-700 hover:text-rose-600 border border-stone-200'
-                  }`}
-                >
-                  <Heart className={`w-3.5 sm:w-4 h-3.5 sm:h-4 shrink-0 ${isLiked ? 'fill-rose-500 text-rose-500' : ''}`} />
-                  <span>{event.likes} {t.likes}</span>
-                </button>
-              </div>
+              <button
+                type="button"
+                onClick={() => onToggleLike(event.id)}
+                className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold transition-all cursor-pointer shrink-0 ${
+                  isLiked
+                    ? 'bg-rose-50 text-rose-600 border border-rose-200 shadow-2xs'
+                    : 'bg-stone-100/90 hover:bg-rose-50 text-stone-700 hover:text-rose-600 border border-stone-200/80'
+                }`}
+                title={`${event.likes} ${t.likes}`}
+              >
+                <Heart className={`w-3.5 h-3.5 shrink-0 ${isLiked ? 'fill-rose-500 text-rose-500' : 'text-stone-400'}`} />
+                <span className="font-bold">{event.likes}</span>
+                <span className="text-[11px] font-normal opacity-75">{t.likes}</span>
+              </button>
             </div>
 
             {/* Date, Time, Location Bar */}
-            <div className="flex flex-wrap items-center gap-y-2 gap-x-3 sm:gap-4 text-xs sm:text-sm font-medium text-stone-600 mt-3 p-3 bg-stone-50 rounded-2xl border border-stone-200">
+            <div className="flex flex-wrap items-center gap-y-1.5 gap-x-2.5 sm:gap-4 text-xs sm:text-sm font-medium text-stone-600 p-2 sm:p-2.5 bg-stone-50 rounded-xl border border-stone-200">
               <span className="flex items-center gap-1.5 shrink-0">
                 <Calendar className="w-4 h-4 text-amber-700 shrink-0" />
                 <span>{event.date}</span>
@@ -873,7 +879,9 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
               <div
                 id="blueprint-canvas-viewport-wrapper"
                 ref={blueprintSectionRef}
-                className="relative w-full rounded-2xl overflow-hidden min-h-[460px] sm:min-h-[500px]"
+                className={`relative w-full rounded-2xl overflow-hidden transition-all duration-200 ${
+                  reassigningRegistration ? 'min-h-[440px] sm:min-h-[480px]' : ''
+                }`}
               >
                 <BlueprintCanvas
                   blueprint={event.blueprint}
@@ -1997,28 +2005,54 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
                         {eventRegistrations.map((reg) => (
                           <div
                             key={reg.id}
-                            className="p-3 bg-white rounded-xl border border-stone-200 flex items-center justify-between gap-3 text-xs min-w-0"
+                            className="p-2.5 sm:p-3 bg-white rounded-xl border border-stone-200 hover:border-amber-300 transition-colors text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 min-w-0"
                           >
-                            <div className="min-w-0 flex-1">
-                              <div className="font-bold text-slate-900 flex flex-wrap items-center gap-1.5 min-w-0">
-                                <span className="break-words">{reg.userName}</span>
+                            {/* Left: Attendee Details */}
+                            <div className="min-w-0 flex-1 space-y-1">
+                              <div className="flex flex-wrap items-center gap-1.5 min-w-0">
+                                <span className="font-extrabold text-slate-900 text-xs sm:text-sm break-words">
+                                  {reg.userName}
+                                </span>
+                                <span className="px-1.5 py-0.5 rounded-md text-[10px] font-bold bg-stone-100 text-stone-700 shrink-0">
+                                  {reg.partySize} {t.personUnit}
+                                </span>
+                                {reg.elementLabel && (
+                                  <span className="px-1.5 py-0.5 rounded-md text-[10px] font-bold bg-amber-100 text-amber-900 shrink-0">
+                                    {reg.elementLabel}
+                                  </span>
+                                )}
                                 {reg.checkedIn && (
-                                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 shrink-0">
-                                    {t.statusPassed}
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 shrink-0">
+                                    <CheckCircle2 className="w-3 h-3 text-emerald-600 shrink-0" />
+                                    <span>{t.statusPassed}</span>
                                   </span>
                                 )}
                               </div>
-                              <div className="text-stone-500 text-[11px] break-words mt-0.5">
-                                {reg.userPhone || t.noPhoneProvided} &bull; {reg.partySize} {t.guestsCount}
-                                {reg.elementLabel && ` &bull; ${t.seatLabelPrefix} ${reg.elementLabel}`}
+
+                              <div className="text-stone-500 text-[10px] sm:text-[11px] flex flex-wrap items-center gap-1.5 min-w-0">
+                                <span>{reg.userPhone || t.noPhoneProvided}</span>
+                                <span>&bull;</span>
+                                <span className="font-mono font-bold text-stone-700 bg-stone-100 px-1.5 py-0.5 rounded text-[10px]">
+                                  {getTicketDisplayCode(reg)}
+                                </span>
+                                {reg.codeUsed && (
+                                  <>
+                                    <span>&bull;</span>
+                                    <span className="font-mono text-amber-900 bg-amber-50 px-1.5 py-0.5 rounded text-[10px] border border-amber-200/60">
+                                      {reg.codeUsed}
+                                    </span>
+                                  </>
+                                )}
                               </div>
                             </div>
-                            <div className="flex items-center gap-2 shrink-0">
+
+                            {/* Right: Actions & Badges */}
+                            <div className="flex items-center gap-2 shrink-0 justify-end flex-wrap pt-1 sm:pt-0 border-t sm:border-t-0 border-stone-100">
                               {reg.isReservedByAdmin ? (
                                 <button
                                   type="button"
                                   onClick={() => handleReleaseAdminTable(reg.elementId!)}
-                                  className="px-2.5 py-1 rounded-lg text-xs font-bold bg-purple-100 hover:bg-purple-200 text-purple-900 border border-purple-300 cursor-pointer transition-colors flex items-center gap-1"
+                                  className="px-2.5 py-1 rounded-lg text-xs font-bold bg-purple-100 hover:bg-purple-200 text-purple-900 border border-purple-300 cursor-pointer transition-colors flex items-center gap-1 shrink-0"
                                 >
                                   <X className="w-3.5 h-3.5" />
                                   <span>{t.releaseTableAdmin}</span>
@@ -2032,7 +2066,7 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
                                         setReassigningRegistration(reg);
                                         setTargetNewElementId(null);
                                       }}
-                                      className="px-2.5 py-1 rounded-lg text-xs font-bold bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 cursor-pointer transition-colors flex items-center gap-1"
+                                      className="px-2.5 py-1 rounded-lg text-xs font-bold bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 cursor-pointer transition-colors flex items-center gap-1 shrink-0"
                                       title={t.changeTableBtn}
                                     >
                                       <RotateCcw className="w-3.5 h-3.5 text-amber-700" />
@@ -2042,20 +2076,15 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
                                 </>
                               )}
 
-                              <div className="text-end">
-                                <span
-                                  className={`inline-block px-2 py-0.5 rounded-full text-[11px] font-semibold ${
-                                    reg.isPaid
-                                      ? 'bg-amber-100 text-amber-900'
-                                      : 'bg-emerald-100 text-emerald-900'
-                                  }`}
-                                >
-                                  {reg.isPaid ? t.paidBadge : t.freeBadge}
-                                </span>
-                                <div className="font-mono text-[10px] text-stone-400 mt-0.5">
-                                  {getTicketDisplayCode(reg)}
-                                </div>
-                              </div>
+                              <span
+                                className={`px-2 py-0.5 rounded-full text-[10px] font-bold shrink-0 ${
+                                  reg.isPaid
+                                    ? 'bg-amber-100 text-amber-900 border border-amber-200'
+                                    : 'bg-emerald-100 text-emerald-900 border border-emerald-200'
+                                }`}
+                              >
+                                {reg.isPaid ? t.paidBadge : t.freeBadge}
+                              </span>
                             </div>
                           </div>
                         ))}
