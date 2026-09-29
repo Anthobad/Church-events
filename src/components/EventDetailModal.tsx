@@ -1,4 +1,4 @@
-import React, { useState, useId, useEffect } from 'react';
+import React, { useState, useId, useEffect, useRef } from 'react';
 import {
   ChurchEvent,
   Registration,
@@ -45,7 +45,9 @@ import {
   Search,
   ShieldAlert,
   CheckCircle,
-  Ticket
+  Ticket,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
 
 interface EventDetailModalProps {
@@ -133,6 +135,95 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
   const [verificationFeedback, setVerificationFeedback] = useState<{ type: 'success' | 'warning' | 'error'; message: string } | null>(null);
   const [attendeeSearchQuery, setAttendeeSearchQuery] = useState('');
   const [attendeeFilter, setAttendeeFilter] = useState<'all' | 'passed' | 'pending'>('all');
+
+  // Admin tabs mouse wheel & drag scrolling controls for desktop
+  const adminTabsRef = useRef<HTMLDivElement>(null);
+  const [canScrollTabsLeft, setCanScrollTabsLeft] = useState(false);
+  const [canScrollTabsRight, setCanScrollTabsRight] = useState(false);
+  const [isTabsOverflowing, setIsTabsOverflowing] = useState(false);
+  const isDraggingTabs = useRef(false);
+  const dragStartX = useRef(0);
+  const dragScrollLeft = useRef(0);
+  const hasMovedDuringDrag = useRef(false);
+
+  const checkTabsScroll = () => {
+    const el = adminTabsRef.current;
+    if (!el) return;
+    const overflowing = el.scrollWidth > el.clientWidth + 4;
+    setIsTabsOverflowing(overflowing);
+    const maxScroll = el.scrollWidth - el.clientWidth;
+    const curScroll = Math.abs(el.scrollLeft);
+    setCanScrollTabsLeft(curScroll > 6);
+    setCanScrollTabsRight(curScroll < maxScroll - 6);
+  };
+
+  useEffect(() => {
+    checkTabsScroll();
+    const el = adminTabsRef.current;
+    if (!el) return;
+
+    // Translate vertical mouse wheel delta into horizontal scroll on desktop
+    const onWheel = (e: WheelEvent) => {
+      if (el.scrollWidth > el.clientWidth) {
+        if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
+          e.preventDefault();
+          const scrollFactor = language === 'ar' ? -1 : 1;
+          el.scrollLeft += e.deltaY * scrollFactor;
+        }
+      }
+    };
+
+    el.addEventListener('wheel', onWheel, { passive: false });
+    el.addEventListener('scroll', checkTabsScroll, { passive: true });
+    window.addEventListener('resize', checkTabsScroll);
+
+    return () => {
+      el.removeEventListener('wheel', onWheel);
+      el.removeEventListener('scroll', checkTabsScroll);
+      window.removeEventListener('resize', checkTabsScroll);
+    };
+  }, [language, adminTab, event.id]);
+
+  const handleScrollTabs = (direction: 'left' | 'right') => {
+    const el = adminTabsRef.current;
+    if (!el) return;
+    const scrollAmount = 240;
+    const dir = direction === 'left' ? -1 : 1;
+    const scrollByAmount = language === 'ar' ? -dir * scrollAmount : dir * scrollAmount;
+    el.scrollBy({ left: scrollByAmount, behavior: 'smooth' });
+  };
+
+  const handleTabsMouseDown = (e: React.MouseEvent) => {
+    const el = adminTabsRef.current;
+    if (!el) return;
+    isDraggingTabs.current = true;
+    hasMovedDuringDrag.current = false;
+    dragStartX.current = e.pageX - el.offsetLeft;
+    dragScrollLeft.current = el.scrollLeft;
+  };
+
+  const handleTabsMouseMove = (e: React.MouseEvent) => {
+    if (!isDraggingTabs.current) return;
+    const el = adminTabsRef.current;
+    if (!el) return;
+    const x = e.pageX - el.offsetLeft;
+    const dist = Math.abs(x - dragStartX.current);
+    if (dist > 5) {
+      hasMovedDuringDrag.current = true;
+    }
+    e.preventDefault();
+    const walk = (x - dragStartX.current) * 1.5;
+    el.scrollLeft = dragScrollLeft.current - walk;
+  };
+
+  const handleTabsMouseUpOrLeave = () => {
+    isDraggingTabs.current = false;
+  };
+
+  const switchAdminTab = (tab: 'verify' | 'registrations' | 'generator') => {
+    if (hasMovedDuringDrag.current) return;
+    setAdminTab(tab);
+  };
 
   // Filter registrations and codes for this specific event
   const eventRegistrations = registrations.filter((r) => r.eventId === event.id);
@@ -877,7 +968,7 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
               className="mt-8 pt-6 border-t-2 border-dashed border-amber-300 bg-amber-50/40 p-5 sm:p-6 rounded-3xl"
             >
               {/* Admin Header & Tabs */}
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-6">
                 <div className="flex items-center gap-2 min-w-0">
                   <div className="w-9 h-9 rounded-xl bg-amber-600 flex items-center justify-center text-white shadow-sm shrink-0">
                     <ShieldCheck className="w-5 h-5" />
@@ -893,56 +984,96 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
                   </div>
                 </div>
 
-                {/* Tab Selectors */}
-                <div className="flex items-center gap-1.5 bg-white p-1 rounded-2xl border border-amber-200/80 shadow-xs overflow-x-auto max-w-full">
-                  <button
-                    type="button"
-                    onClick={() => setAdminTab('verify')}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap shrink-0 ${
-                      adminTab === 'verify'
-                        ? 'bg-amber-700 text-white shadow-xs'
-                        : 'text-stone-600 hover:text-stone-900 hover:bg-stone-100'
-                    }`}
-                  >
-                    <ScanLine className="w-3.5 h-3.5 shrink-0" />
-                    <span>{t.ticketVerificationTab}</span>
-                    <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
-                      adminTab === 'verify' ? 'bg-amber-800 text-amber-200' : 'bg-stone-100 text-stone-600'
-                    }`}>
-                      {admittedTicketsCount}/{totalRegistrationsCount}
-                    </span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setAdminTab('registrations')}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap shrink-0 ${
-                      adminTab === 'registrations'
-                        ? 'bg-amber-700 text-white shadow-xs'
-                        : 'text-stone-600 hover:text-stone-900 hover:bg-stone-100'
-                    }`}
-                  >
-                    <Users className="w-3.5 h-3.5 shrink-0" />
-                    <span>{t.registrationsList}</span>
-                    <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
-                      adminTab === 'registrations' ? 'bg-amber-800 text-amber-200' : 'bg-stone-100 text-stone-600'
-                    }`}>
-                      {eventRegistrations.length}
-                    </span>
-                  </button>
-
-                  {event.isPaid && event.type !== 'open' && (
+                {/* Tab Selectors with Desktop Mouse Wheel, Drag-to-Scroll & Chevron Arrow Navigation */}
+                <div className="relative flex items-center min-w-0 max-w-full">
+                  {/* Left Scroll Chevron for Desktop Mouse Users */}
+                  {isTabsOverflowing && (
                     <button
                       type="button"
-                      onClick={() => setAdminTab('generator')}
+                      onClick={() => handleScrollTabs('left')}
+                      className={`flex items-center justify-center w-7 h-7 rounded-full bg-white shadow-md border border-amber-200/90 text-stone-700 hover:text-amber-800 hover:bg-amber-50 shrink-0 z-10 -me-2.5 transition-all cursor-pointer ${
+                        canScrollTabsLeft ? 'opacity-95 hover:opacity-100 hover:scale-105' : 'opacity-30 pointer-events-none'
+                      }`}
+                      title={language === 'ar' ? 'التمرير لليمين' : 'Scroll left'}
+                      aria-label="Scroll tabs left"
+                    >
+                      <ChevronLeft className="w-4 h-4" />
+                    </button>
+                  )}
+
+                  <div
+                    ref={adminTabsRef}
+                    onMouseDown={handleTabsMouseDown}
+                    onMouseMove={handleTabsMouseMove}
+                    onMouseUp={handleTabsMouseUpOrLeave}
+                    onMouseLeave={handleTabsMouseUpOrLeave}
+                    className="flex items-center gap-1.5 bg-white p-1 rounded-2xl border border-amber-200/80 shadow-xs overflow-x-auto max-w-full select-none cursor-grab active:cursor-grabbing scroll-smooth"
+                    style={{ scrollbarWidth: 'thin' }}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => switchAdminTab('verify')}
                       className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap shrink-0 ${
-                        adminTab === 'generator'
+                        adminTab === 'verify'
                           ? 'bg-amber-700 text-white shadow-xs'
                           : 'text-stone-600 hover:text-stone-900 hover:bg-stone-100'
                       }`}
                     >
-                      <KeyRound className="w-3.5 h-3.5 shrink-0" />
-                      <span>{t.adminReservationSection}</span>
+                      <ScanLine className="w-3.5 h-3.5 shrink-0" />
+                      <span>{t.ticketVerificationTab}</span>
+                      <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+                        adminTab === 'verify' ? 'bg-amber-800 text-amber-200' : 'bg-stone-100 text-stone-600'
+                      }`}>
+                        {admittedTicketsCount}/{totalRegistrationsCount}
+                      </span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => switchAdminTab('registrations')}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap shrink-0 ${
+                        adminTab === 'registrations'
+                          ? 'bg-amber-700 text-white shadow-xs'
+                          : 'text-stone-600 hover:text-stone-900 hover:bg-stone-100'
+                      }`}
+                    >
+                      <Users className="w-3.5 h-3.5 shrink-0" />
+                      <span>{t.registrationsList}</span>
+                      <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+                        adminTab === 'registrations' ? 'bg-amber-800 text-amber-200' : 'bg-stone-100 text-stone-600'
+                      }`}>
+                        {eventRegistrations.length}
+                      </span>
+                    </button>
+
+                    {event.isPaid && event.type !== 'open' && (
+                      <button
+                        type="button"
+                        onClick={() => switchAdminTab('generator')}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap shrink-0 ${
+                          adminTab === 'generator'
+                            ? 'bg-amber-700 text-white shadow-xs'
+                            : 'text-stone-600 hover:text-stone-900 hover:bg-stone-100'
+                        }`}
+                      >
+                        <KeyRound className="w-3.5 h-3.5 shrink-0" />
+                        <span>{t.adminReservationSection}</span>
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Right Scroll Chevron for Desktop Mouse Users */}
+                  {isTabsOverflowing && (
+                    <button
+                      type="button"
+                      onClick={() => handleScrollTabs('right')}
+                      className={`flex items-center justify-center w-7 h-7 rounded-full bg-white shadow-md border border-amber-200/90 text-stone-700 hover:text-amber-800 hover:bg-amber-50 shrink-0 z-10 -ms-2.5 transition-all cursor-pointer ${
+                        canScrollTabsRight ? 'opacity-95 hover:opacity-100 hover:scale-105' : 'opacity-30 pointer-events-none'
+                      }`}
+                      title={language === 'ar' ? 'التمرير لليسار' : 'Scroll right'}
+                      aria-label="Scroll tabs right"
+                    >
+                      <ChevronRight className="w-4 h-4" />
                     </button>
                   )}
                 </div>
