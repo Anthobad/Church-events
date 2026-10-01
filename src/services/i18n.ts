@@ -34,6 +34,9 @@ export interface Translations {
   paidSwitchDesc: string;
   blueprintTitle: string;
   blueprintDesc: string;
+  exportToExcel: string;
+  exportToExcelTooltip: string;
+  exportSuccessNotice: string;
   addBlueprint: string;
   hideBlueprint: string;
   saveEvent: string;
@@ -56,6 +59,10 @@ export interface Translations {
   seatsLeft: string;
   tableFull: string;
   optimalFitBadge: string;
+  highlyRecommendedBadge: string;
+  prioritizedTableBadge: string;
+  emptyRequiresHalfBadge: string;
+  selectPartySizeFirst: string;
   oversizedWarning: string;
   enterEightDigitCode: string;
   codePlaceholder: string;
@@ -194,6 +201,16 @@ export interface Translations {
   readyForNextTicket: string;
   checkNextTicketBtn: string;
   showTicketAtDoorPrompt: string;
+  passXofY: string;
+  passesRemainingLabel: string;
+  passNextGuestBtn: string;
+  passAllRemainingBtn: string;
+  lateArrivalTitle: string;
+  allGuestsEnteredTitle: string;
+  lateGuestsAllowedNotice: string;
+  verifiedViaAdminCode: string;
+  verifiedViaTicketCode: string;
+  groupLateEntryNotice: string;
   changeTableBtn: string;
   changeTableTitle: string;
   changeTableDesc: string;
@@ -246,6 +263,9 @@ export const translations: Record<Language, Translations> = {
     paidSwitchDesc: 'يقوم المشارك بالدفع للمشرف مسبقاً، ويقوم المشرف بتوليد رمز حجز مكوّن من 4 أرقام للمشارك.',
     blueprintTitle: 'مخطط المقاعد والطاولات (Blueprint)',
     blueprintDesc: 'رسم تفاعلي للمكان لاختيار الكراسي والطاولات مباشرة',
+    exportToExcel: 'تصدير إكسل (Excel)',
+    exportToExcelTooltip: 'طباعة وتصدير جميع بيانات الطاولات والمشاركين والأكواد إلى ملف Excel',
+    exportSuccessNotice: 'تم تصدير وتنزيل ملف Excel بنجاح!',
     addBlueprint: 'فتح أداة رسم المخطط التفاعلي',
     hideBlueprint: 'إخفاء المخطط',
     saveEvent: 'نشر المناسبة',
@@ -268,6 +288,10 @@ export const translations: Record<Language, Translations> = {
     seatsLeft: 'مقاعد متبقية',
     tableFull: 'الطاولة ممتلئة بالكامل',
     optimalFitBadge: 'ملائم لعدد أفرادك تماماً',
+    highlyRecommendedBadge: 'موصى به بشدة (تطابق تام)',
+    prioritizedTableBadge: 'أولوية (طاولة بها حضور)',
+    emptyRequiresHalfBadge: 'يتطلب نصف السعة لفتحه',
+    selectPartySizeFirst: 'حدد عدد أفراد حجزك لاقتراح الطاولات المثالية:',
     oversizedWarning: 'يرجى اختيار طاولة متبقية تناسب عدد أفرادك لمنع ترك مقاعد فارغة',
     enterEightDigitCode: 'أدخل رمز الحجز (4 أرقام) المستلم من المشرف',
     codePlaceholder: 'مثال: 8492',
@@ -376,15 +400,15 @@ export const translations: Record<Language, Translations> = {
     imageReady: 'الصورة جاهزة',
     changeImage: 'تغيير الصورة',
     ticketVerificationTab: 'التحقق من التذاكر والدخول',
-    verifyTicketTitle: 'فحص وتأكيد صلاحية التذاكر',
-    verifyTicketDesc: 'أدخل رمز التذكرة أو كود الحجز المكون من 4 أرقام للتحقق الفوري ومنع تكرار الدخول عند البوابة.',
-    enterTicketCodePlaceholder: 'أدخل رمز التذكرة أو كود الحجز (4 أرقام مثل 9305)...',
+    verifyTicketTitle: 'فحص وتأكيد صلاحية التذاكر والدخول',
+    verifyTicketDesc: 'أدخل رمز التذكرة (4 أرقام) أو رمز الحجز الإداري (4 أرقام). يتيح النظام دخول كل شخص بالعدد المسجل ولو وصلوا في أوقات متفرقة.',
+    enterTicketCodePlaceholder: 'أدخل رمز التذكرة أو رمز الحجز الإداري (مثل A1B2 أو 4829)...',
     verifyBtn: 'فحص الكود',
     verifying: 'جاري الفحص المباشر...',
     validTicketTitle: 'تذكرة صالحة - جاهزة للدخول',
     confirmEntryBtn: 'تأكيد الدخول وتمرير التذكرة',
-    alreadyPassedTitle: '⚠️ تحذير: كود مكرر - تم الدخول مسبقاً!',
-    alreadyPassedWarning: 'تم تمرير هذه التذكرة وتسجيل دخولها مسبقاً في:',
+    alreadyPassedTitle: '⚠️ تحذير: اكتمل دخول جميع الضيوف لهذا الرمز!',
+    alreadyPassedWarning: 'تم استهلاك جميع مرات الدخول المسموحة بالكامل لهذا الرمز مسبقاً في:',
     admittedBy: 'بواسطة المشرف:',
     invalidTicketTitle: '❌ كود غير صالح - لم يتم العثور على تذكرة',
     invalidTicketDesc: 'يرجى مراجعة الكود مع الزائر أو البحث باسمه ورقم هاتفه في القائمة أدناه.',
@@ -405,7 +429,17 @@ export const translations: Record<Language, Translations> = {
     admissionConfirmedTitle: 'تم تأكيد الدخول وتمرير التذكرة بنجاح',
     readyForNextTicket: 'جاهز لفحص التذكرة التالية',
     checkNextTicketBtn: 'فحص تذكرة أخرى',
-    showTicketAtDoorPrompt: 'أظهر هذه التذكرة أو الرمز للمسؤول عند مدخل الفعالية',
+    showTicketAtDoorPrompt: 'قدم هذا الرمز للمشرف عند المدخل. إذا كان الحجز لعدة أشخاص، يمكن لكل شخص استخدام نفس الرمز للدخول في أي وقت.',
+    passXofY: 'دخول {current} من {total}',
+    passesRemainingLabel: 'متبقي {count} من الضيوف المتأخرين',
+    passNextGuestBtn: 'تمرير الضيف التالي (+1)',
+    passAllRemainingBtn: 'تمرير جميع المتبقين ({count})',
+    lateArrivalTitle: 'دخول ضيف متأخر - الرمز صالح',
+    allGuestsEnteredTitle: 'اكتمل دخول جميع الضيوف المسجلين',
+    lateGuestsAllowedNotice: 'ميزة الدخول المنفصل: يمكن للضيوف المتأخرين استخدام نفس الرمز (رمز التذكرة أو رمز الحجز) للدخول لاحقاً حتى اكتمال العدد.',
+    verifiedViaAdminCode: 'تم التحقق بواسطة رمز الحجز الإداري (4 أرقام)',
+    verifiedViaTicketCode: 'تم التحقق بواسطة رمز التذكرة (4 أرقام)',
+    groupLateEntryNotice: 'إذا وصل أفراد المجموعة في أوقات متفرقة، يمكن استخدام هذا الرمز للدخول عدة مرات بعدد الضيوف المسجلين.',
     changeTableBtn: 'تغيير الطاولة',
     changeTableTitle: 'تغيير الطاولة / نقل المشارك',
     changeTableDesc: 'اختر طاولة بديلة تتسع لعدد أفراد المشارك بالكامل.',
@@ -456,6 +490,9 @@ export const translations: Record<Language, Translations> = {
     paidSwitchDesc: 'Members pay the church admin offline, and the admin generates a 4-digit code for them to hold their seats.',
     blueprintTitle: 'Seating Blueprint & Floor Plan',
     blueprintDesc: 'Interactive canvas floor plan where members choose their seats or tables',
+    exportToExcel: 'Export to Excel',
+    exportToExcelTooltip: 'Print and export all table seating and attendee details to an Excel file',
+    exportSuccessNotice: 'Excel file exported and downloaded successfully!',
     addBlueprint: 'Open Interactive Blueprint Editor',
     hideBlueprint: 'Hide Blueprint',
     saveEvent: 'Publish Event',
@@ -478,6 +515,10 @@ export const translations: Record<Language, Translations> = {
     seatsLeft: 'Seats Left',
     tableFull: 'Table Full',
     optimalFitBadge: 'Perfect fit for your party',
+    highlyRecommendedBadge: 'Highly Recommended (Exact Fit)',
+    prioritizedTableBadge: 'Prioritized (Table with Guests)',
+    emptyRequiresHalfBadge: 'Requires ≥ 50% capacity',
+    selectPartySizeFirst: 'Select your party size to see recommended tables:',
     oversizedWarning: 'Please select a table that best fits your group to prevent empty seats',
     enterEightDigitCode: 'Enter the 4-digit code received from church admin',
     codePlaceholder: 'e.g. 8492',
@@ -586,15 +627,15 @@ export const translations: Record<Language, Translations> = {
     imageReady: 'Image Ready',
     changeImage: 'Change Image',
     ticketVerificationTab: 'Ticket Verification & Entry',
-    verifyTicketTitle: 'Verify & Validate Tickets',
-    verifyTicketDesc: 'Enter the 4-digit ticket code or reservation code for instant validation and duplication prevention at the entrance.',
-    enterTicketCodePlaceholder: 'Enter 4-digit ticket or reservation code (e.g. 9305)...',
+    verifyTicketTitle: 'Verify & Validate Tickets & Entrance Passes',
+    verifyTicketDesc: 'Enter the 4-digit ticket code or 4-digit admin reservation code. Groups can enter separately: the code can pass as many times as the registered party size.',
+    enterTicketCodePlaceholder: 'Enter 4-digit ticket code or 4-digit admin code (e.g. A1B2 or 4829)...',
     verifyBtn: 'Verify Code',
     verifying: 'Checking live database...',
     validTicketTitle: 'Valid Ticket - Ready for Entry',
     confirmEntryBtn: 'Confirm Entry / Mark as Passed',
-    alreadyPassedTitle: '⚠️ Warning: Duplicate Ticket - Already Passed!',
-    alreadyPassedWarning: 'This ticket was already passed and admitted at:',
+    alreadyPassedTitle: '⚠️ Notice: All Passes Used for This Code!',
+    alreadyPassedWarning: 'All allowed admissions for this party have already entered:',
     admittedBy: 'Admitted by:',
     invalidTicketTitle: '❌ Invalid Code - No Matching Ticket Found',
     invalidTicketDesc: 'Please verify the code with the attendee or search for their name or phone in the list below.',
@@ -612,10 +653,20 @@ export const translations: Record<Language, Translations> = {
     reservationCodeLabel: 'Admin Reservation Code',
     quickVerifyBtn: 'Verify Tickets',
     entrySuccessNotice: 'Ticket entry confirmed successfully!',
-    admissionConfirmedTitle: 'Entry Confirmed — Ticket Admitted',
+    admissionConfirmedTitle: 'Entry Confirmed — Guest Admitted',
     readyForNextTicket: 'Ready to verify next attendee',
     checkNextTicketBtn: 'Scan Next Ticket',
-    showTicketAtDoorPrompt: 'Present this ticket or code to the usher at the entrance',
+    showTicketAtDoorPrompt: 'Present this code to the usher at the entrance. If registered for multiple guests, late arrivals can still enter using this same code.',
+    passXofY: 'Pass {current} of {total}',
+    passesRemainingLabel: '{count} late guests remaining',
+    passNextGuestBtn: 'Pass Next Guest (+1)',
+    passAllRemainingBtn: 'Pass All Remaining ({count})',
+    lateArrivalTitle: 'Late Arrival Entry — Valid Pass',
+    allGuestsEnteredTitle: 'All Registered Guests Have Entered',
+    lateGuestsAllowedNotice: 'Staggered Entry Allowed: If guests in this group arrive at different times, this code can pass up to {total} times.',
+    verifiedViaAdminCode: 'Verified via 4-Digit Admin Reservation Code',
+    verifiedViaTicketCode: 'Verified via 4-Digit Ticket Code',
+    groupLateEntryNotice: 'If members of this group arrive separately, they can each present this code at the door until all registered guests are admitted.',
     changeTableBtn: 'Change Table',
     changeTableTitle: 'Change Table / Reassign Seat',
     changeTableDesc: 'Select an available table with sufficient capacity for the attendee and their party.',
@@ -649,7 +700,7 @@ export const translations: Record<Language, Translations> = {
     registrationRequired: 'Sur inscription',
     paidEvent: 'Payant (Code)',
     freeEvent: 'Gratuit',
-    requiresAdminCode: 'Code à 8 chiffres requis',
+    requiresAdminCode: 'Code à 4 chiffres requis',
     clickToViewMore: 'Voir les détails',
     eventDetails: 'Détails de l’événement',
     date: 'Date',
@@ -666,6 +717,9 @@ export const translations: Record<Language, Translations> = {
     paidSwitchDesc: 'Le participant règle en personne auprès de l’administrateur, qui lui génère un code à 4 chiffres pour réserver sa place.',
     blueprintTitle: 'Plan de salle interactif',
     blueprintDesc: 'Plan interactif pour sélectionner chaises et tables directement',
+    exportToExcel: 'Exporter vers Excel',
+    exportToExcelTooltip: 'Imprimer et exporter tous les détails des tables et participants dans un fichier Excel',
+    exportSuccessNotice: 'Fichier Excel exporté et téléchargé avec succès !',
     addBlueprint: 'Ouvrir le plan de salle',
     hideBlueprint: 'Masquer le plan',
     saveEvent: 'Publier',
@@ -688,6 +742,10 @@ export const translations: Record<Language, Translations> = {
     seatsLeft: 'Places restantes',
     tableFull: 'Table complète',
     optimalFitBadge: 'Idéal pour votre groupe',
+    highlyRecommendedBadge: 'Fortement recommandé (Ajustement parfait)',
+    prioritizedTableBadge: 'Prioritaire (Table partagée)',
+    emptyRequiresHalfBadge: 'Nécessite ≥ 50% de la capacité',
+    selectPartySizeFirst: 'Choisissez la taille de votre groupe pour voir les recommandations :',
     oversizedWarning: 'Veuillez choisir une table adaptée à votre groupe pour éviter les places vides',
     enterEightDigitCode: 'Entrez le code à 4 chiffres fourni par l’administrateur',
     codePlaceholder: 'Exemple : 8492',
@@ -796,15 +854,15 @@ export const translations: Record<Language, Translations> = {
     imageReady: 'Image prête',
     changeImage: 'Changer l’image',
     ticketVerificationTab: 'Vérification des billets & Entrée',
-    verifyTicketTitle: 'Vérifier la validité des billets',
-    verifyTicketDesc: 'Saisissez le code à 4 chiffres du billet ou de réservation pour une vérification instantanée à l\'entrée.',
-    enterTicketCodePlaceholder: 'Entrez le code à 4 chiffres du billet ou de réservation (ex. 9305)...',
+    verifyTicketTitle: 'Vérifier la validité des billets et accès',
+    verifyTicketDesc: 'Saisissez le code du billet (4 chiffres) ou le code admin (4 chiffres). Les retardataires peuvent entrer séparément : le code est valide autant de fois que le nombre d’invités.',
+    enterTicketCodePlaceholder: 'Code billet (4 chiffres) ou code admin (4 chiffres) ex. A1B2 ou 4829...',
     verifyBtn: 'Vérifier le code',
     verifying: 'Vérification en direct...',
     validTicketTitle: 'Billet valide - Prêt pour l\'entrée',
     confirmEntryBtn: 'Confirmer l\'entrée / Marquer comme passé',
-    alreadyPassedTitle: '⚠️ Attention : Billet en double - Déjà passé !',
-    alreadyPassedWarning: 'Ce billet a déjà été validé et admis à :',
+    alreadyPassedTitle: '⚠️ Attention : Toutes les entrées ont été utilisées pour ce code !',
+    alreadyPassedWarning: 'Toutes les entrées autorisées pour ce groupe ont déjà été validées à :',
     admittedBy: 'Admis par :',
     invalidTicketTitle: '❌ Code invalide - Aucun billet trouvé',
     invalidTicketDesc: 'Veuillez vérifier le code avec le participant ou chercher son nom dans la liste ci-dessous.',
@@ -821,11 +879,21 @@ export const translations: Record<Language, Translations> = {
     ticketCodeLabel: 'Code du billet',
     reservationCodeLabel: 'Code de réservation admin',
     quickVerifyBtn: 'Vérifier les billets',
-    entrySuccessNotice: 'Entrée du billet confirmée avec succès !',
-    admissionConfirmedTitle: 'Entrée confirmée — Billet validé',
+    entrySuccessNotice: 'Entrée confirmée avec succès !',
+    admissionConfirmedTitle: 'Entrée confirmée — Invité admis',
     readyForNextTicket: 'Prêt pour le participant suivant',
     checkNextTicketBtn: 'Vérifier un autre billet',
-    showTicketAtDoorPrompt: 'Présentez ce billet ou ce code au responsable à l\'entrée',
+    showTicketAtDoorPrompt: 'Présentez ce code au responsable à l\'entrée. Si vous êtes plusieurs, les retardataires peuvent entrer plus tard avec ce même code.',
+    passXofY: 'Entrée {current} sur {total}',
+    passesRemainingLabel: '{count} invités retardataires restants',
+    passNextGuestBtn: 'Faire entrer l’invité suivant (+1)',
+    passAllRemainingBtn: 'Faire entrer tous les restants ({count})',
+    lateArrivalTitle: 'Entrée retardataire — Billet valide',
+    allGuestsEnteredTitle: 'Tous les invités inscrits sont entrés',
+    lateGuestsAllowedNotice: 'Entrée différée autorisée : les retardataires peuvent entrer séparément avec ce code jusqu’à concurrence de {total} personnes.',
+    verifiedViaAdminCode: 'Vérifié via le code de réservation admin (4 chiffres)',
+    verifiedViaTicketCode: 'Vérifié via le code du billet (4 chiffres)',
+    groupLateEntryNotice: 'Si les membres du groupe arrivent à des heures différentes, chacun peut présenter ce code jusqu’à l’entrée de tous les invités.',
     changeTableBtn: 'Changer de table',
     changeTableTitle: 'Changer de table / Réassigner la place',
     changeTableDesc: 'Sélectionnez une table disponible avec une capacité suffisante pour le participant et son groupe.',

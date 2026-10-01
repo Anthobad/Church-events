@@ -24,6 +24,7 @@ import {
 } from '../services/storage';
 import { BlueprintCanvas } from './BlueprintCanvas';
 import { DigitalTicketModal } from './DigitalTicketModal';
+import { exportEventSeatingToExcel } from '../utils/excelExport';
 import {
   X,
   Calendar,
@@ -50,7 +51,10 @@ import {
   CheckCircle,
   Ticket,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  UserPlus,
+  Info,
+  Printer
 } from 'lucide-react';
 
 interface EventDetailModalProps {
@@ -108,11 +112,22 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
   const [userName, setUserName] = useState('');
   const [userPhone, setUserPhone] = useState('');
   const [partySize, setPartySize] = useState<number>(1);
+  const [activeFreePartySize, setActiveFreePartySize] = useState<number | null>(null);
   const [eightDigitCodeInput, setEightDigitCodeInput] = useState('');
   const [verifiedAdminCode, setVerifiedAdminCode] = useState<AdminReservationCode | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successTicket, setSuccessTicket] = useState<Registration | null>(null);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
+  const [exportFeedback, setExportFeedback] = useState<string | null>(null);
+
+  // Admin export to Excel handler
+  const handleExportToExcel = () => {
+    const success = exportEventSeatingToExcel(event, eventRegistrations, adminCodes, language);
+    if (success) {
+      setExportFeedback(t.exportSuccessNotice);
+      setTimeout(() => setExportFeedback(null), 4500);
+    }
+  };
 
   // Admin Code Generator state (form at bottom of page)
   const [adminAttendeeName, setAdminAttendeeName] = useState('');
@@ -308,10 +323,18 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
   // Admission Metrics
   const totalRegistrationsCount = eventRegistrations.length;
   const totalGuestsCount = eventRegistrations.reduce((sum, r) => sum + r.partySize, 0);
-  const admittedGuestsCount = eventRegistrations
-    .filter((r) => r.checkedIn)
-    .reduce((sum, r) => sum + r.partySize, 0);
-  const admittedTicketsCount = eventRegistrations.filter((r) => r.checkedIn).length;
+  const admittedGuestsCount = eventRegistrations.reduce((sum, r) => {
+    const admitted = r.admittedCount !== undefined ? r.admittedCount : (r.checkedIn ? r.partySize : 0);
+    return sum + admitted;
+  }, 0);
+  const admittedTicketsCount = eventRegistrations.filter((r) => {
+    const admitted = r.admittedCount !== undefined ? r.admittedCount : (r.checkedIn ? r.partySize : 0);
+    return admitted >= r.partySize;
+  }).length;
+  const partiallyAdmittedCount = eventRegistrations.filter((r) => {
+    const admitted = r.admittedCount !== undefined ? r.admittedCount : (r.checkedIn ? r.partySize : 0);
+    return admitted > 0 && admitted < r.partySize;
+  }).length;
   const pendingGuestsCount = Math.max(0, totalGuestsCount - admittedGuestsCount);
   const admissionPercentage = totalGuestsCount > 0 ? Math.round((admittedGuestsCount / totalGuestsCount) * 100) : 0;
 
@@ -374,12 +397,12 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
     }
   };
 
-  // Confirm admission handler
-  const handleConfirmAdmission = async (regId: string) => {
+  // Confirm admission handler (supports passing 1 guest at a time or all remaining guests)
+  const handleConfirmAdmission = async (regId: string, countToAdmit: number = 1) => {
     setIsCheckingIn(true);
     setVerificationFeedback(null);
     try {
-      const res = await checkInRegistrationLive(regId, event.id, 'Admin');
+      const res = await checkInRegistrationLive(regId, event.id, 'Admin', countToAdmit);
       if (res.success && res.registration) {
         setVerifyResult({ status: 'ADMISSION_CONFIRMED', registration: res.registration });
         setVerificationFeedback({
@@ -407,12 +430,12 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
     }
   };
 
-  // Undo admission handler
-  const handleUndoAdmission = async (regId: string) => {
+  // Undo admission handler (decrements by countToUndo)
+  const handleUndoAdmission = async (regId: string, countToUndo: number = 1) => {
     setIsCheckingIn(true);
     setVerificationFeedback(null);
     try {
-      const res = await undoCheckInLive(regId, event.id);
+      const res = await undoCheckInLive(regId, event.id, countToUndo);
       if (res.success && res.registration) {
         setVerifyResult({ status: 'VALID', registration: res.registration });
         if (onRegistrationUpdated) {
@@ -428,8 +451,10 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
 
   // Filtered attendees for the entrance management table
   const filteredAttendees = eventRegistrations.filter((reg) => {
-    if (attendeeFilter === 'passed' && !reg.checkedIn) return false;
-    if (attendeeFilter === 'pending' && reg.checkedIn) return false;
+    const admitted = reg.admittedCount !== undefined ? reg.admittedCount : (reg.checkedIn ? reg.partySize : 0);
+    const isFullyPassed = admitted >= reg.partySize;
+    if (attendeeFilter === 'passed' && admitted === 0) return false;
+    if (attendeeFilter === 'pending' && isFullyPassed) return false;
 
     if (attendeeSearchQuery.trim()) {
       const q = attendeeSearchQuery.toLowerCase().trim();
@@ -444,7 +469,7 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
     return true;
   });
 
-  // Handle validating 4-digit or 8-digit code
+  // Handle validating 4-digit code (also accepts legacy codes)
   const handleVerifyCode = async () => {
     setErrorMessage(null);
     const cleanCode = eightDigitCodeInput.trim();
@@ -492,14 +517,64 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
   const handleSelectSeatingElement = (element: SeatingElement) => {
     setErrorMessage(null);
 
-    // Non-admin user cannot select an admin-reserved or full table
+    // Non-admin user validation: cannot select admin-reserved, full, or unallowable empty tables
     if (!isAdmin) {
+      if (event.isPaid && !verifiedAdminCode) {
+        setSelectedElement(null);
+        setErrorMessage(
+          language === 'ar'
+            ? 'يرجى إدخال رمز الحجز المكون من 4 أرقام والتحقق منه أولاً لاختيار مقاعدك.'
+            : language === 'fr'
+            ? 'Veuillez d’abord saisir et vérifier votre code à 4 chiffres pour choisir vos places.'
+            : 'Please enter and verify your 4-digit reservation code above first to select seats.'
+        );
+        return;
+      }
+
       const elementRegs = eventRegistrations.filter((r) => r.elementId === element.id);
       const isReservedByAdmin = elementRegs.some((r) => r.isReservedByAdmin);
       const occupied = elementRegs.reduce((sum, r) => sum + r.partySize, 0);
       const remaining = element.capacity - occupied;
-      if (isReservedByAdmin || remaining <= 0) {
+      const currentPartySize = verifiedAdminCode ? verifiedAdminCode.partySize : partySize;
+      const minRequired = Math.ceil(element.capacity / 2);
+
+      if (isReservedByAdmin) {
         setSelectedElement(null);
+        setErrorMessage(language === 'ar' ? 'هذه الطاولة محجوزة للإدارة.' : 'This table is reserved by admin.');
+        return;
+      }
+      if (remaining <= 0) {
+        setSelectedElement(null);
+        setErrorMessage(t.tableFull);
+        return;
+      }
+
+      // Empty Table Rule: If party size is explicitly set and below half capacity, block or auto-adjust
+      if (element.type.startsWith('table') && occupied === 0) {
+        if (!event.isPaid && currentPartySize < minRequired) {
+          // If user picked an empty table on free event, set party size to required half capacity
+          setPartySize(minRequired);
+          setActiveFreePartySize(minRequired);
+        } else if (currentPartySize < minRequired) {
+          setSelectedElement(null);
+          setErrorMessage(
+            language === 'ar'
+              ? `طاولة فارغة: يتطلب الحجز ${minRequired} أفراد على الأقل (نصف سعة الطاولة). يمكنك حجز طاولة مشتركة بها حضور.`
+              : language === 'fr'
+              ? `Table vide : nécessite au moins ${minRequired} personnes (moitié de la capacité). Veuillez choisir une table partagée.`
+              : `Empty table requires at least ${minRequired} guests (half capacity). Please choose a shared table with guests.`
+          );
+          return;
+        }
+      }
+
+      if (remaining < currentPartySize) {
+        setSelectedElement(null);
+        setErrorMessage(
+          language === 'ar'
+            ? `المتبقي في هذه الطاولة ${remaining} مقاعد فقط بينما حجزك لـ ${currentPartySize} أفراد.`
+            : `Only ${remaining} seats left at this table for party of ${currentPartySize}.`
+        );
         return;
       }
     }
@@ -528,7 +603,6 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
         }
       } else {
         // Table packing guidance for free events
-        // Default party size to min(remaining, 2)
         const defaultSize = Math.min(remaining, Math.max(1, partySize));
         setPartySize(defaultSize);
       }
@@ -555,7 +629,31 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
       const elementRegs = eventRegistrations.filter((r) => r.elementId === selectedElement.id);
       const isReservedByAdmin = elementRegs.some((r) => r.isReservedByAdmin);
       if (isReservedByAdmin) {
-        setErrorMessage(t.tableFull);
+        setErrorMessage(language === 'ar' ? 'هذه الطاولة محجوزة للإدارة.' : 'This table is reserved by admin.');
+        return;
+      }
+      const occupied = elementRegs.reduce((sum, r) => sum + r.partySize, 0);
+      const remaining = selectedElement.capacity - occupied;
+      const currentPartySize = verifiedAdminCode ? verifiedAdminCode.partySize : partySize;
+      const minRequired = Math.ceil(selectedElement.capacity / 2);
+
+      if (selectedElement.type.startsWith('table') && occupied === 0 && currentPartySize < minRequired) {
+        setErrorMessage(
+          language === 'ar'
+            ? `طاولة فارغة: يجب أن يكون الحجز لـ ${minRequired} أفراد على الأقل (نصف سعة الطاولة).`
+            : language === 'fr'
+            ? `Table vide : doit comporter au moins ${minRequired} personnes (moitié de la capacité).`
+            : `Empty table requires at least ${minRequired} guests (half capacity).`
+        );
+        return;
+      }
+
+      if (remaining < currentPartySize) {
+        setErrorMessage(
+          language === 'ar'
+            ? `المتبقي في هذه الطاولة ${remaining} مقاعد فقط بينما حجزك لـ ${currentPartySize} أفراد.`
+            : `Only ${remaining} seats left at this table for party of ${currentPartySize}.`
+        );
         return;
       }
     }
@@ -868,12 +966,105 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
                   <p className="text-xs text-stone-500">{t.blueprintDesc}</p>
                 </div>
 
-                {selectedElement && (
-                  <span className="px-3 py-1 rounded-full text-xs font-bold bg-amber-50 text-amber-900 border border-amber-300">
-                    {t.seatAssigned}: {selectedElement.label} ({selectedElement.capacity} {t.guestsCount})
-                  </span>
-                )}
+                <div className="flex flex-wrap items-center gap-2">
+                  {/* Print / Export to Excel Button beside Canvas for Admin */}
+                  {isAdmin && (
+                    <button
+                      type="button"
+                      onClick={handleExportToExcel}
+                      id="admin-export-excel-blueprint-btn"
+                      className="px-3.5 py-1.5 rounded-xl text-xs sm:text-sm font-bold bg-emerald-700 hover:bg-emerald-800 active:scale-95 text-white shadow-xs hover:shadow-md transition-all flex items-center gap-2 cursor-pointer border border-emerald-600 shrink-0"
+                      title={t.exportToExcelTooltip}
+                    >
+                      <Printer className="w-4 h-4 shrink-0" />
+                      <span>{t.exportToExcel}</span>
+                    </button>
+                  )}
+
+                  {selectedElement && (
+                    <span className="px-3 py-1 rounded-full text-xs font-bold bg-amber-50 text-amber-900 border border-amber-300">
+                      {t.seatAssigned}: {selectedElement.label} ({selectedElement.capacity} {t.guestsCount})
+                    </span>
+                  )}
+                </div>
               </div>
+
+              {/* Feedback toast when Excel is generated */}
+              {exportFeedback && (
+                <div className="mb-3 p-3 rounded-xl bg-emerald-50 border border-emerald-300 text-emerald-900 text-xs font-bold flex items-center justify-between gap-2 animate-in fade-in duration-200">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <span>{exportFeedback}</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setExportFeedback(null)}
+                    className="text-emerald-700 hover:text-emerald-900 text-xs font-semibold cursor-pointer"
+                  >
+                    ✕
+                  </button>
+                </div>
+              )}
+
+              {/* Live Party Size Chooser for Free Events */}
+              {!event.isPaid && !isAdmin && (
+                <div
+                  id="canvas-party-size-bar"
+                  className="mb-3 p-2.5 sm:p-3 bg-stone-50 rounded-2xl border border-stone-200 flex flex-wrap items-center justify-between gap-2.5 text-xs shadow-2xs"
+                >
+                  <div className="flex flex-wrap items-center gap-2 min-w-0">
+                    <span className="font-extrabold text-slate-900 flex items-center gap-1.5 shrink-0">
+                      <Users className="w-4 h-4 text-amber-700 shrink-0" />
+                      <span>{t.numberOfPeople}:</span>
+                    </span>
+                    <div className="flex items-center gap-1 flex-wrap">
+                      <button
+                        type="button"
+                        onClick={() => setActiveFreePartySize(null)}
+                        className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center justify-center shrink-0 ${
+                          activeFreePartySize === null
+                            ? 'bg-slate-900 text-white shadow-xs'
+                            : 'bg-white text-stone-700 hover:bg-stone-200 border border-stone-200'
+                        }`}
+                      >
+                        {language === 'ar' ? 'الكل (عرض)' : language === 'fr' ? 'Tout afficher' : 'All Tables'}
+                      </button>
+                      {[1, 2, 3, 4, 5, 6, 8, 10].map((size) => (
+                        <button
+                          key={size}
+                          type="button"
+                          onClick={() => {
+                            setActiveFreePartySize(size);
+                            setPartySize(size);
+                            if (selectedElement) {
+                              const elementRegs = eventRegistrations.filter((r) => r.elementId === selectedElement.id);
+                              const occ = elementRegs.reduce((sum, r) => sum + r.partySize, 0);
+                              const rem = selectedElement.capacity - occ;
+                              const minReq = Math.ceil(selectedElement.capacity / 2);
+                              if (rem < size || (occ === 0 && size < minReq)) {
+                                setSelectedElement(null);
+                              }
+                            }
+                          }}
+                          className={`w-7 h-7 sm:w-8 sm:h-8 rounded-lg text-xs font-extrabold transition-all cursor-pointer flex items-center justify-center shrink-0 ${
+                            activeFreePartySize === size
+                              ? 'bg-amber-700 text-white shadow-xs ring-2 ring-amber-600/30'
+                              : 'bg-white text-stone-700 hover:bg-stone-200 border border-stone-200'
+                          }`}
+                        >
+                          {size}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <span className="text-[11px] text-stone-500 font-medium">
+                    {activeFreePartySize === null
+                      ? (language === 'ar' ? 'اختر عدد الأفراد لتفعيل اقتراح وترتيب الطاولات' : language === 'fr' ? 'Sélectionnez la taille du groupe pour les recommandations' : 'Select party size to see recommended tables')
+                      : t.selectPartySizeFirst}
+                  </span>
+                </div>
+              )}
 
               {/* Interactive Blueprint Canvas & Change Table Overlay Container */}
               <div
@@ -889,7 +1080,7 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
                   selectedElementId={selectedElement?.id}
                   onSelectElement={handleSelectSeatingElement}
                   language={language}
-                  partySizeForHighlight={verifiedAdminCode ? verifiedAdminCode.partySize : partySize}
+                  partySizeForHighlight={event.isPaid ? (verifiedAdminCode ? verifiedAdminCode.partySize : undefined) : (activeFreePartySize ?? undefined)}
                   showAvailabilityBar={isAdmin}
                   isAdmin={isAdmin}
                 />
@@ -1315,7 +1506,11 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
                           min="1"
                           max={selectedElement ? selectedElement.capacity : 10}
                           value={partySize}
-                          onChange={(e) => setPartySize(parseInt(e.target.value))}
+                          onChange={(e) => {
+                            const newSize = parseInt(e.target.value);
+                            setPartySize(newSize);
+                            setActiveFreePartySize(newSize);
+                          }}
                           className="flex-1 accent-amber-700 cursor-pointer"
                         />
                         <span className="font-bold text-sm text-stone-900 w-8 text-center shrink-0">
@@ -1549,7 +1744,7 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
                             if (verificationFeedback) setVerificationFeedback(null);
                           }}
                           placeholder={t.enterTicketCodePlaceholder}
-                          maxLength={8}
+                          maxLength={32}
                           className="w-full px-4 py-3 rounded-xl border border-stone-300 text-sm font-mono font-bold text-slate-900 placeholder:font-sans placeholder:font-normal placeholder:text-stone-400 focus:outline-hidden focus:ring-2 focus:ring-amber-600 bg-stone-50/50"
                           autoComplete="off"
                         />
@@ -1591,197 +1786,349 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
                     {verifyResult && (
                       <div className="mt-5 animate-in zoom-in-95 duration-200">
                         {/* 1. ADMISSION CONFIRMED - SUCCESSFUL ENTRY */}
-                        {verifyResult.status === 'ADMISSION_CONFIRMED' && verifyResult.registration && (
-                          <div className="p-4 sm:p-5 rounded-2xl bg-emerald-50 border-2 border-emerald-500 text-emerald-950 shadow-sm space-y-4">
-                            <div className="flex items-start justify-between gap-3">
-                              <div className="flex items-center gap-2.5 min-w-0">
-                                <div className="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-xs">
-                                  <CheckCircle2 className="w-6 h-6 animate-bounce" />
+                        {verifyResult.status === 'ADMISSION_CONFIRMED' && verifyResult.registration && (() => {
+                          const reg = verifyResult.registration;
+                          const admitted = reg.admittedCount !== undefined ? reg.admittedCount : (reg.checkedIn ? reg.partySize : 0);
+                          const total = reg.partySize;
+                          const remaining = Math.max(0, total - admitted);
+                          const isFull = admitted >= total;
+
+                          return (
+                            <div className="p-4 sm:p-5 rounded-2xl bg-emerald-50 border-2 border-emerald-500 text-emerald-950 shadow-sm space-y-4">
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="flex items-center gap-2.5 min-w-0">
+                                  <div className="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+                                    <CheckCircle2 className="w-6 h-6 animate-bounce" />
+                                  </div>
+                                  <div className="min-w-0">
+                                    <span className="text-xs font-black uppercase tracking-wider text-emerald-800 block truncate">
+                                      {isFull ? t.allGuestsEnteredTitle : t.admissionConfirmedTitle}
+                                    </span>
+                                    <h4 className="text-lg font-black text-slate-900 truncate">
+                                      {reg.userName}
+                                    </h4>
+                                  </div>
+                                </div>
+
+                                <span className={`px-3 py-1 rounded-full text-xs font-black shrink-0 ${
+                                  isFull ? 'bg-emerald-200 text-emerald-900' : 'bg-amber-200 text-amber-950'
+                                }`}>
+                                  {isFull
+                                    ? `${t.statusPassed} (${total}/${total})`
+                                    : `${admitted}/${total} ${t.personUnit}`
+                                  }
+                                </span>
+                              </div>
+
+                              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs bg-white/90 p-3 rounded-xl border border-emerald-200">
+                                <div className="min-w-0">
+                                  <span className="text-stone-500 block text-[11px] mb-0.5">{t.partyCount}</span>
+                                  <span className="font-extrabold text-slate-900">
+                                    {admitted} / {total} {t.guestsCount}
+                                  </span>
                                 </div>
                                 <div className="min-w-0">
-                                  <span className="text-xs font-black uppercase tracking-wider text-emerald-800 block truncate">
-                                    {t.admissionConfirmedTitle}
+                                  <span className="text-stone-500 block text-[11px] mb-0.5">{t.seatAssigned}</span>
+                                  <span className="font-extrabold text-amber-900 truncate block">
+                                    {reg.elementLabel || (language === 'ar' ? 'دخول حر / بدون مقعد' : 'Open Entry')}
                                   </span>
-                                  <h4 className="text-lg font-black text-slate-900 truncate">
-                                    {verifyResult.registration.userName}
-                                  </h4>
+                                </div>
+                                <div className="min-w-0 col-span-2 sm:col-span-1">
+                                  <span className="text-stone-500 block text-[11px] mb-0.5">{t.ticketCodeLabel}</span>
+                                  <span className="font-mono font-bold text-slate-900 break-all">
+                                    {getTicketDisplayCode(reg)}
+                                  </span>
                                 </div>
                               </div>
 
-                              <span className="px-3 py-1 rounded-full text-xs font-black bg-emerald-200 text-emerald-900 shrink-0">
-                                {t.statusPassed}
-                              </span>
-                            </div>
+                              {/* Late Arrival Staggered Entry Notice */}
+                              {!isFull && remaining > 0 && (
+                                <div className="p-3 bg-amber-50/90 rounded-xl border border-amber-200 text-xs text-amber-900 flex items-start gap-2">
+                                  <Info className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
+                                  <div className="space-y-0.5">
+                                    <span className="font-bold block">
+                                      {t.passesRemainingLabel.replace('{count}', String(remaining))}
+                                    </span>
+                                    <p className="text-[11px] text-amber-800 leading-relaxed">
+                                      {t.lateGuestsAllowedNotice.replace('{total}', String(total))}
+                                    </p>
+                                  </div>
+                                </div>
+                              )}
 
-                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs bg-white/90 p-3 rounded-xl border border-emerald-200">
-                              <div className="min-w-0">
-                                <span className="text-stone-500 block text-[11px] mb-0.5">{t.partyCount}</span>
-                                <span className="font-extrabold text-slate-900">
-                                  {verifyResult.registration.partySize} {t.guestsCount}
-                                </span>
+                              {/* Progress Bar of admissions for this group */}
+                              <div className="space-y-1">
+                                <div className="flex justify-between items-center text-[11px] font-bold text-stone-600">
+                                  <span>{admitted} of {total} {language === 'ar' ? 'ضيوف دخلوا' : 'guests inside'}</span>
+                                  <span>{Math.round((admitted / total) * 100)}%</span>
+                                </div>
+                                <div className="w-full bg-stone-200/80 h-2 rounded-full overflow-hidden">
+                                  <div
+                                    className="bg-emerald-600 h-full rounded-full transition-all duration-300"
+                                    style={{ width: `${Math.min(100, Math.round((admitted / total) * 100))}%` }}
+                                  />
+                                </div>
                               </div>
-                              <div className="min-w-0">
-                                <span className="text-stone-500 block text-[11px] mb-0.5">{t.seatAssigned}</span>
-                                <span className="font-extrabold text-amber-900 truncate block">
-                                  {verifyResult.registration.elementLabel || (language === 'ar' ? 'دخول حر / بدون مقعد' : 'Open Entry')}
-                                </span>
-                              </div>
-                              <div className="min-w-0 col-span-2 sm:col-span-1">
-                                <span className="text-stone-500 block text-[11px] mb-0.5">{t.ticketCodeLabel}</span>
-                                <span className="font-mono font-bold text-slate-900 break-all">
-                                  {getTicketDisplayCode(verifyResult.registration)}
-                                </span>
+
+                              <div className="flex flex-wrap items-center justify-between gap-2.5 pt-1">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setVerifyResult(null);
+                                      setVerifyCodeInput('');
+                                      setVerificationFeedback(null);
+                                    }}
+                                    className="py-2.5 px-4 rounded-xl font-extrabold text-xs text-white bg-emerald-700 hover:bg-emerald-800 transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-xs"
+                                  >
+                                    <ScanLine className="w-4 h-4" />
+                                    <span>{t.checkNextTicketBtn}</span>
+                                  </button>
+
+                                  {!isFull && remaining > 0 && (
+                                    <button
+                                      type="button"
+                                      disabled={isCheckingIn}
+                                      onClick={() => handleConfirmAdmission(reg.id, 1)}
+                                      className="py-2.5 px-3.5 rounded-xl font-extrabold text-xs bg-emerald-100 hover:bg-emerald-200 text-emerald-950 border border-emerald-300 cursor-pointer transition-colors flex items-center justify-center gap-1.5"
+                                    >
+                                      <UserPlus className="w-3.5 h-3.5 text-emerald-700" />
+                                      <span>{t.passNextGuestBtn}</span>
+                                    </button>
+                                  )}
+
+                                  {!isFull && remaining > 1 && (
+                                    <button
+                                      type="button"
+                                      disabled={isCheckingIn}
+                                      onClick={() => handleConfirmAdmission(reg.id, remaining)}
+                                      className="py-2.5 px-3.5 rounded-xl font-extrabold text-xs bg-slate-900 hover:bg-slate-800 text-white cursor-pointer transition-colors flex items-center justify-center gap-1.5"
+                                    >
+                                      <Users className="w-3.5 h-3.5 text-amber-400" />
+                                      <span>{t.passAllRemainingBtn.replace('{count}', String(remaining))}</span>
+                                    </button>
+                                  )}
+                                </div>
+
+                                <button
+                                  type="button"
+                                  disabled={isCheckingIn}
+                                  onClick={() => handleUndoAdmission(reg.id, 1)}
+                                  className="py-2 px-3 rounded-xl text-xs font-bold bg-stone-100 hover:bg-stone-200 text-stone-700 cursor-pointer transition-colors flex items-center justify-center gap-1.5 shrink-0"
+                                >
+                                  <RotateCcw className="w-3.5 h-3.5" />
+                                  <span>{t.undoPass} (-1)</span>
+                                </button>
                               </div>
                             </div>
-
-                            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 pt-1">
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setVerifyResult(null);
-                                  setVerifyCodeInput('');
-                                  setVerificationFeedback(null);
-                                }}
-                                className="w-full sm:w-auto py-2.5 px-4 rounded-xl font-extrabold text-xs text-white bg-emerald-700 hover:bg-emerald-800 transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-xs"
-                              >
-                                <ScanLine className="w-4 h-4" />
-                                <span>{t.checkNextTicketBtn}</span>
-                              </button>
-
-                              <button
-                                type="button"
-                                disabled={isCheckingIn}
-                                onClick={() => handleUndoAdmission(verifyResult.registration!.id)}
-                                className="w-full sm:w-auto py-2 px-3 rounded-xl text-xs font-bold bg-stone-100 hover:bg-stone-200 text-stone-700 cursor-pointer transition-colors flex items-center justify-center gap-1.5 shrink-0"
-                              >
-                                <RotateCcw className="w-3.5 h-3.5" />
-                                <span>{t.undoPass}</span>
-                              </button>
-                            </div>
-                          </div>
-                        )}
+                          );
+                        })()}
 
                         {/* 2. VALID TICKET - READY FOR ADMISSION */}
-                        {verifyResult.status === 'VALID' && verifyResult.registration && (
-                          <div className="p-4 sm:p-5 rounded-2xl bg-emerald-50 border-2 border-emerald-500 text-emerald-950 shadow-sm space-y-4">
-                            <div className="flex items-start justify-between gap-3">
-                              <div className="flex items-center gap-2.5 min-w-0">
-                                <div className="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0">
-                                  <CheckCircle className="w-6 h-6" />
+                        {verifyResult.status === 'VALID' && verifyResult.registration && (() => {
+                          const reg = verifyResult.registration;
+                          const admitted = reg.admittedCount !== undefined ? reg.admittedCount : (reg.checkedIn ? reg.partySize : 0);
+                          const total = reg.partySize;
+                          const remaining = Math.max(0, total - admitted);
+                          const isLateArrival = admitted > 0;
+                          const nextGuestNum = admitted + 1;
+
+                          return (
+                            <div className="p-4 sm:p-5 rounded-2xl bg-emerald-50 border-2 border-emerald-500 text-emerald-950 shadow-sm space-y-4">
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="flex items-center gap-2.5 min-w-0">
+                                  <div className="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+                                    {isLateArrival ? <Clock className="w-6 h-6 text-amber-300" /> : <CheckCircle className="w-6 h-6" />}
+                                  </div>
+                                  <div className="min-w-0">
+                                    <span className="text-xs font-extrabold uppercase tracking-wider text-emerald-700 block truncate">
+                                      {isLateArrival ? t.lateArrivalTitle : t.validTicketTitle}
+                                    </span>
+                                    <h4 className="text-lg font-black text-slate-900 truncate">
+                                      {reg.userName}
+                                    </h4>
+                                  </div>
+                                </div>
+
+                                <div className="text-end shrink-0">
+                                  <span className={`inline-block px-3 py-1 rounded-full text-xs font-black ${
+                                    isLateArrival ? 'bg-amber-200 text-amber-950' : 'bg-emerald-200/80 text-emerald-900'
+                                  }`}>
+                                    {t.passXofY.replace('{current}', String(nextGuestNum)).replace('{total}', String(total))}
+                                  </span>
+                                  {isLateArrival && (
+                                    <span className="text-[11px] block font-bold text-amber-800 mt-0.5">
+                                      {remaining} {t.remainingToEnter}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+
+                              {/* Code verification source badge */}
+                              <div className="flex flex-wrap items-center gap-2 text-[11px]">
+                                {verifyResult.matchedBy === 'ADMIN_CODE' ? (
+                                  <span className="px-2.5 py-1 rounded-lg font-bold bg-purple-100 text-purple-900 border border-purple-200 shadow-2xs">
+                                    {t.verifiedViaAdminCode}
+                                  </span>
+                                ) : verifyResult.matchedBy === 'TICKET_CODE' ? (
+                                  <span className="px-2.5 py-1 rounded-lg font-bold bg-blue-100 text-blue-900 border border-blue-200 shadow-2xs">
+                                    {t.verifiedViaTicketCode}
+                                  </span>
+                                ) : null}
+                              </div>
+
+                              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 text-xs bg-white/80 p-3 rounded-xl border border-emerald-200">
+                                <div className="min-w-0">
+                                  <span className="text-stone-500 block text-[11px] mb-0.5">{t.attendeePhone}</span>
+                                  <span className="font-semibold text-stone-900 truncate block">
+                                    {reg.userPhone || t.noPhoneProvided}
+                                  </span>
                                 </div>
                                 <div className="min-w-0">
-                                  <span className="text-xs font-extrabold uppercase tracking-wider text-emerald-700 block truncate">
-                                    {t.validTicketTitle}
+                                  <span className="text-stone-500 block text-[11px] mb-0.5">{t.seatAssigned}</span>
+                                  <span className="font-extrabold text-amber-900 truncate block">
+                                    {reg.elementLabel || (language === 'ar' ? 'دخول حر / بدون مقعد' : 'Open Entry')}
                                   </span>
-                                  <h4 className="text-lg font-black text-slate-900 truncate">
-                                    {verifyResult.registration.userName}
-                                  </h4>
+                                </div>
+                                <div className="min-w-0 col-span-2 sm:col-span-1">
+                                  <span className="text-stone-500 block text-[11px] mb-0.5">{t.ticketCodeLabel}</span>
+                                  <span className="font-mono font-bold text-slate-900 break-all">
+                                    {getTicketDisplayCode(reg)}
+                                  </span>
                                 </div>
                               </div>
 
-                              <span className="px-3 py-1 rounded-full text-xs font-bold bg-emerald-200/80 text-emerald-900 shrink-0">
-                                {verifyResult.registration.partySize} {t.guestsCount}
-                              </span>
-                            </div>
+                              {/* Notice on how many times the code can pass */}
+                              <div className="p-3 bg-amber-50/80 rounded-xl border border-amber-200/80 text-xs text-amber-900 space-y-1">
+                                <div className="flex items-center gap-1.5 font-bold">
+                                  <Users className="w-3.5 h-3.5 text-amber-700 shrink-0" />
+                                  <span>
+                                    {t.lateGuestsAllowedNotice.replace('{total}', String(total))}
+                                  </span>
+                                </div>
+                                {admitted > 0 && (
+                                  <p className="text-[11px] text-amber-800 ps-5">
+                                    {language === 'ar'
+                                      ? `تم دخول ${admitted} ضيف مسبقاً. متبقي ${remaining} مرات دخول لهذا الرمز.`
+                                      : `${admitted} guest(s) already inside. ${remaining} pass(es) remaining for this code.`
+                                    }
+                                  </p>
+                                )}
+                              </div>
 
-                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 text-xs bg-white/80 p-3 rounded-xl border border-emerald-200">
-                              <div className="min-w-0">
-                                <span className="text-stone-500 block text-[11px] mb-0.5">{t.attendeePhone}</span>
-                                <span className="font-semibold text-stone-900 truncate block">
-                                  {verifyResult.registration.userPhone || t.noPhoneProvided}
-                                </span>
-                              </div>
-                              <div className="min-w-0">
-                                <span className="text-stone-500 block text-[11px] mb-0.5">{t.seatAssigned}</span>
-                                <span className="font-extrabold text-amber-900 truncate block">
-                                  {verifyResult.registration.elementLabel || (language === 'ar' ? 'دخول حر / بدون مقعد' : 'Open Entry')}
-                                </span>
-                              </div>
-                              <div className="min-w-0 col-span-2 sm:col-span-1">
-                                <span className="text-stone-500 block text-[11px] mb-0.5">{t.ticketCodeLabel}</span>
-                                <span className="font-mono font-bold text-slate-900 break-all">
-                                  {getTicketDisplayCode(verifyResult.registration)}
-                                </span>
+                              {/* Confirm Entry CTA Button(s) */}
+                              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 pt-1">
+                                <button
+                                  type="button"
+                                  disabled={isCheckingIn}
+                                  onClick={() => handleConfirmAdmission(reg.id, 1)}
+                                  className="flex-1 py-3 px-4 rounded-xl font-black text-sm text-white bg-emerald-600 hover:bg-emerald-700 transition-all shadow-md hover:shadow-lg cursor-pointer flex items-center justify-center gap-2"
+                                >
+                                  {isCheckingIn ? (
+                                    <Loader2 className="w-5 h-5 animate-spin" />
+                                  ) : (
+                                    <UserCheck className="w-5 h-5" />
+                                  )}
+                                  <span>
+                                    {total > 1
+                                      ? `${t.confirmEntryBtn} (${t.passXofY.replace('{current}', String(nextGuestNum)).replace('{total}', String(total))})`
+                                      : t.confirmEntryBtn
+                                    }
+                                  </span>
+                                </button>
+
+                                {remaining > 1 && (
+                                  <button
+                                    type="button"
+                                    disabled={isCheckingIn}
+                                    onClick={() => handleConfirmAdmission(reg.id, remaining)}
+                                    className="py-3 px-4 rounded-xl font-black text-xs text-slate-900 bg-amber-200 hover:bg-amber-300 border border-amber-300 transition-all shadow-xs cursor-pointer flex items-center justify-center gap-2 shrink-0"
+                                  >
+                                    <Users className="w-4 h-4 text-amber-800" />
+                                    <span>{t.passAllRemainingBtn.replace('{count}', String(remaining))}</span>
+                                  </button>
+                                )}
                               </div>
                             </div>
-
-                            {/* Confirm Entry CTA Button */}
-                            <button
-                              type="button"
-                              disabled={isCheckingIn}
-                              onClick={() => handleConfirmAdmission(verifyResult.registration!.id)}
-                              className="w-full py-3 px-4 rounded-xl font-black text-sm text-white bg-emerald-600 hover:bg-emerald-700 transition-all shadow-md hover:shadow-lg cursor-pointer flex items-center justify-center gap-2"
-                            >
-                              {isCheckingIn ? (
-                                <Loader2 className="w-5 h-5 animate-spin" />
-                              ) : (
-                                <UserCheck className="w-5 h-5" />
-                              )}
-                              <span>{t.confirmEntryBtn}</span>
-                            </button>
-                          </div>
-                        )}
+                          );
+                        })()}
 
                         {/* 3. ALREADY PASSED - DUPLICATE WARNING */}
-                        {verifyResult.status === 'ALREADY_PASSED' && verifyResult.registration && (
-                          <div className="p-4 sm:p-5 rounded-2xl bg-red-50 border-2 border-red-500 text-red-950 shadow-sm space-y-4">
-                            <div className="flex items-start justify-between gap-3">
-                              <div className="flex items-center gap-2.5 min-w-0">
-                                <div className="w-10 h-10 rounded-xl bg-red-600 text-white flex items-center justify-center shrink-0">
-                                  <ShieldAlert className="w-6 h-6 animate-pulse" />
+                        {verifyResult.status === 'ALREADY_PASSED' && verifyResult.registration && (() => {
+                          const reg = verifyResult.registration;
+                          const total = reg.partySize;
+
+                          return (
+                            <div className="p-4 sm:p-5 rounded-2xl bg-red-50 border-2 border-red-500 text-red-950 shadow-sm space-y-4">
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="flex items-center gap-2.5 min-w-0">
+                                  <div className="w-10 h-10 rounded-xl bg-red-600 text-white flex items-center justify-center shrink-0">
+                                    <ShieldAlert className="w-6 h-6 animate-pulse" />
+                                  </div>
+                                  <div className="min-w-0">
+                                    <span className="text-xs font-extrabold uppercase tracking-wider text-red-700 block truncate">
+                                      {t.alreadyPassedTitle}
+                                    </span>
+                                    <h4 className="text-lg font-black text-slate-900 truncate">
+                                      {reg.userName}
+                                    </h4>
+                                  </div>
                                 </div>
-                                <div className="min-w-0">
-                                  <span className="text-xs font-extrabold uppercase tracking-wider text-red-700 block truncate">
-                                    {t.alreadyPassedTitle}
-                                  </span>
-                                  <h4 className="text-lg font-black text-slate-900 truncate">
-                                    {verifyResult.registration.userName}
-                                  </h4>
+
+                                <span className="px-3 py-1 rounded-full text-xs font-bold bg-red-200 text-red-900 shrink-0">
+                                  {total}/{total} {t.statusPassed}
+                                </span>
+                              </div>
+
+                              <div className="p-3 bg-white/90 rounded-xl border border-red-200 text-xs space-y-1.5">
+                                <p className="font-bold text-red-800">
+                                  {language === 'ar'
+                                    ? `تم استهلاك جميع مرات الدخول بالكامل (${total} من ${total} ضيوف). لا تتوفر مرات دخول إضافية لهذا الرمز.`
+                                    : `All ${total} of ${total} passes for this ticket/code have already been used. No passes remaining.`
+                                  }
+                                </p>
+                                <div className="flex flex-wrap items-center gap-3 text-stone-700 font-medium">
+                                  {reg.checkedInAt && (
+                                    <span>
+                                      🕒 {new Date(reg.checkedInAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                                    </span>
+                                  )}
+                                  {reg.checkedInBy && (
+                                    <span>
+                                      👤 {t.admittedBy} {reg.checkedInBy}
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="text-[11px] text-stone-500 pt-1 border-t border-red-100 flex flex-wrap gap-2">
+                                  <span>{total} {t.guestsCount}</span>
+                                  <span>&bull;</span>
+                                  <span>{reg.elementLabel || 'General'}</span>
+                                  {verifyResult.matchedBy === 'ADMIN_CODE' && (
+                                    <>
+                                      <span>&bull;</span>
+                                      <span className="font-bold text-purple-800">{t.verifiedViaAdminCode}</span>
+                                    </>
+                                  )}
                                 </div>
                               </div>
 
-                              <span className="px-3 py-1 rounded-full text-xs font-bold bg-red-200 text-red-900 shrink-0">
-                                {t.statusPassed}
-                              </span>
-                            </div>
-
-                            <div className="p-3 bg-white/90 rounded-xl border border-red-200 text-xs space-y-1.5">
-                              <p className="font-bold text-red-800">
-                                {t.alreadyPassedWarning}
-                              </p>
-                              <div className="flex flex-wrap items-center gap-3 text-stone-700 font-medium">
-                                {verifyResult.registration.checkedInAt && (
-                                  <span>
-                                    🕒 {new Date(verifyResult.registration.checkedInAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-                                  </span>
-                                )}
-                                {verifyResult.registration.checkedInBy && (
-                                  <span>
-                                    👤 {t.admittedBy} {verifyResult.registration.checkedInBy}
-                                  </span>
-                                )}
-                              </div>
-                              <div className="text-[11px] text-stone-500 pt-1 border-t border-red-100">
-                                {verifyResult.registration.partySize} {t.guestsCount} &bull; {verifyResult.registration.elementLabel || 'General'}
+                              <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-1">
+                                <span className="text-xs text-red-700 font-semibold italic">
+                                  🚫 {language === 'ar' ? 'لا تسمح بدخول أفراد إضافيين بدون تذكرة جديدة' : 'Do not allow extra guests beyond registered capacity'}
+                                </span>
+                                <button
+                                  type="button"
+                                  disabled={isCheckingIn}
+                                  onClick={() => handleUndoAdmission(reg.id, 1)}
+                                  className="w-full sm:w-auto px-3 py-1.5 rounded-lg text-xs font-bold bg-stone-200 hover:bg-stone-300 text-stone-800 cursor-pointer transition-colors flex items-center justify-center gap-1.5 shrink-0"
+                                >
+                                  <RotateCcw className="w-3.5 h-3.5" />
+                                  <span>{t.undoPass} (-1)</span>
+                                </button>
                               </div>
                             </div>
-
-                            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-1">
-                              <span className="text-xs text-red-700 font-semibold italic">
-                                🚫 {language === 'ar' ? 'لا تسمح بالدخول مرة أخرى لتجنب التكرار' : 'Do not allow re-entry with this duplicate ticket'}
-                              </span>
-                              <button
-                                type="button"
-                                disabled={isCheckingIn}
-                                onClick={() => handleUndoAdmission(verifyResult.registration!.id)}
-                                className="w-full sm:w-auto px-3 py-1.5 rounded-lg text-xs font-bold bg-stone-200 hover:bg-stone-300 text-stone-800 cursor-pointer transition-colors flex items-center justify-center gap-1.5 shrink-0"
-                              >
-                                <RotateCcw className="w-3.5 h-3.5" />
-                                <span>{t.undoPass}</span>
-                              </button>
-                            </div>
-                          </div>
-                        )}
+                          );
+                        })()}
 
                         {/* 4. INVALID TICKET - NOT FOUND */}
                         {verifyResult.status === 'INVALID' && (
@@ -1831,35 +2178,35 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
 
                       {/* Filter Tabs */}
                       <div className="flex flex-wrap items-center gap-1 bg-stone-100 p-1 rounded-xl w-full sm:w-auto">
-                        <button
-                          type="button"
-                          onClick={() => setAttendeeFilter('all')}
-                          className={`flex-1 sm:flex-initial text-center px-2.5 py-1 rounded-lg text-xs font-bold transition-colors cursor-pointer whitespace-nowrap ${
-                            attendeeFilter === 'all' ? 'bg-white text-slate-900 shadow-xs' : 'text-stone-500 hover:text-stone-900'
-                          }`}
-                        >
-                          {t.filterAll} ({eventRegistrations.length})
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setAttendeeFilter('passed')}
-                          className={`flex-1 sm:flex-initial text-center px-2.5 py-1 rounded-lg text-xs font-bold transition-colors cursor-pointer whitespace-nowrap ${
-                            attendeeFilter === 'passed' ? 'bg-emerald-600 text-white shadow-xs' : 'text-stone-500 hover:text-stone-900'
-                          }`}
-                        >
-                          {t.filterPassed} ({admittedTicketsCount})
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setAttendeeFilter('pending')}
-                          className={`flex-1 sm:flex-initial text-center px-2.5 py-1 rounded-lg text-xs font-bold transition-colors cursor-pointer whitespace-nowrap ${
-                            attendeeFilter === 'pending' ? 'bg-amber-600 text-white shadow-xs' : 'text-stone-500 hover:text-stone-900'
-                          }`}
-                        >
-                          {t.filterPending} ({eventRegistrations.length - admittedTicketsCount})
-                        </button>
+                          <button
+                            type="button"
+                            onClick={() => setAttendeeFilter('all')}
+                            className={`flex-1 sm:flex-initial text-center px-2.5 py-1 rounded-lg text-xs font-bold transition-colors cursor-pointer whitespace-nowrap ${
+                              attendeeFilter === 'all' ? 'bg-white text-slate-900 shadow-xs' : 'text-stone-500 hover:text-stone-900'
+                            }`}
+                          >
+                            {t.filterAll} ({eventRegistrations.length})
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setAttendeeFilter('passed')}
+                            className={`flex-1 sm:flex-initial text-center px-2.5 py-1 rounded-lg text-xs font-bold transition-colors cursor-pointer whitespace-nowrap ${
+                              attendeeFilter === 'passed' ? 'bg-emerald-600 text-white shadow-xs' : 'text-stone-500 hover:text-stone-900'
+                            }`}
+                          >
+                            {t.filterPassed} ({admittedTicketsCount})
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setAttendeeFilter('pending')}
+                            className={`flex-1 sm:flex-initial text-center px-2.5 py-1 rounded-lg text-xs font-bold transition-colors cursor-pointer whitespace-nowrap ${
+                              attendeeFilter === 'pending' ? 'bg-amber-600 text-white shadow-xs' : 'text-stone-500 hover:text-stone-900'
+                            }`}
+                          >
+                            {t.filterPending} ({eventRegistrations.length - admittedTicketsCount})
+                          </button>
+                        </div>
                       </div>
-                    </div>
 
                     {/* Search Input */}
                     <div className="relative">
@@ -1880,103 +2227,178 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
                       </p>
                     ) : (
                       <div className="max-h-72 overflow-y-auto space-y-2 pe-1">
-                        {filteredAttendees.map((reg) => (
-                          <div
-                            key={reg.id}
-                            className={`p-3 rounded-xl border transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs min-w-0 ${
-                              reg.checkedIn
-                                ? 'bg-emerald-50/40 border-emerald-200'
-                                : 'bg-white border-stone-200 hover:border-amber-300'
-                            }`}
-                          >
-                            <div className="space-y-1 min-w-0 flex-1">
-                              <div className="flex flex-wrap items-center gap-1.5 min-w-0">
-                                <span className="font-extrabold text-slate-900 text-sm break-words">
-                                  {reg.userName}
-                                </span>
-                                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-stone-100 text-stone-700 shrink-0">
-                                  {reg.partySize} {t.personUnit}
-                                </span>
-                                {reg.elementLabel && (
-                                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-900 shrink-0">
-                                    {reg.elementLabel}
+                        {filteredAttendees.map((reg) => {
+                          const admitted = reg.admittedCount !== undefined ? reg.admittedCount : (reg.checkedIn ? reg.partySize : 0);
+                          const total = reg.partySize;
+                          const remaining = Math.max(0, total - admitted);
+                          const isFullyPassed = admitted >= total;
+                          const isPartial = admitted > 0 && admitted < total;
+
+                          return (
+                            <div
+                              key={reg.id}
+                              className={`p-3 rounded-xl border transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs min-w-0 ${
+                                isFullyPassed
+                                  ? 'bg-emerald-50/40 border-emerald-200'
+                                  : isPartial
+                                  ? 'bg-amber-50/40 border-amber-200'
+                                  : 'bg-white border-stone-200 hover:border-amber-300'
+                              }`}
+                            >
+                              <div className="space-y-1 min-w-0 flex-1">
+                                <div className="flex flex-wrap items-center gap-1.5 min-w-0">
+                                  <span className="font-extrabold text-slate-900 text-sm break-words">
+                                    {reg.userName}
                                   </span>
-                                )}
-                              </div>
-                              <div className="text-[11px] text-stone-500 flex flex-wrap items-center gap-1.5 break-words">
-                                <span>{reg.userPhone || t.noPhoneProvided}</span>
-                                <span>&bull;</span>
-                                <span className="font-mono font-bold text-stone-700 break-all">
-                                  {getTicketDisplayCode(reg)}
-                                </span>
-                                {reg.codeUsed && (
-                                  <>
-                                    <span>&bull;</span>
-                                    <span className="font-mono text-amber-900 bg-amber-50 px-1.5 py-0.5 rounded break-all">
-                                      {reg.codeUsed}
+
+                                  {/* Party size and admission status pill */}
+                                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold shrink-0 ${
+                                    isFullyPassed
+                                      ? 'bg-emerald-100 text-emerald-900 border border-emerald-300'
+                                      : isPartial
+                                      ? 'bg-amber-100 text-amber-900 border border-amber-300 font-extrabold'
+                                      : 'bg-stone-100 text-stone-700'
+                                  }`}>
+                                    {isFullyPassed
+                                      ? `${total}/${total} ${t.personUnit} (${t.statusPassed})`
+                                      : isPartial
+                                      ? `${admitted}/${total} ${t.personUnit} (${remaining} ${t.remainingToEnter})`
+                                      : `${total} ${t.personUnit}`
+                                    }
+                                  </span>
+
+                                  {reg.elementLabel && (
+                                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-900 shrink-0">
+                                      {reg.elementLabel}
                                     </span>
+                                  )}
+                                </div>
+                                <div className="text-[11px] text-stone-500 flex flex-wrap items-center gap-1.5 break-words">
+                                  <span>{reg.userPhone || t.noPhoneProvided}</span>
+                                  <span>&bull;</span>
+                                  <span className="font-mono font-bold text-stone-700 break-all" title="Ticket Code">
+                                    TKT: {getTicketDisplayCode(reg)}
+                                  </span>
+                                  {reg.codeUsed && (
+                                    <>
+                                      <span>&bull;</span>
+                                      <span className="font-mono text-purple-900 bg-purple-50 px-1.5 py-0.5 rounded border border-purple-200 break-all" title="Admin Reservation Code">
+                                        ADM: {reg.codeUsed}
+                                      </span>
+                                    </>
+                                  )}
+                                </div>
+                              </div>
+
+                              <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto justify-end shrink-0 pt-1 sm:pt-0 border-t sm:border-t-0 border-stone-100">
+                                {reg.isReservedByAdmin ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleReleaseAdminTable(reg.elementId!)}
+                                    className="px-2.5 py-1.5 rounded-xl font-bold text-xs bg-purple-100 hover:bg-purple-200 text-purple-900 border border-purple-300 cursor-pointer transition-colors flex items-center gap-1 shrink-0"
+                                  >
+                                    <X className="w-3.5 h-3.5" />
+                                    <span>{t.releaseTableAdmin}</span>
+                                  </button>
+                                ) : (
+                                  <>
+                                    {event.blueprint && event.blueprint.elements.length > 0 && (
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setReassigningRegistration(reg);
+                                          setTargetNewElementId(null);
+                                        }}
+                                        className="px-2.5 py-1.5 rounded-xl font-bold text-xs bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 cursor-pointer transition-colors flex items-center gap-1 shrink-0"
+                                        title={t.changeTableBtn}
+                                      >
+                                        <RotateCcw className="w-3.5 h-3.5 text-amber-700" />
+                                        <span>{t.changeTableBtn}</span>
+                                      </button>
+                                    )}
+
+                                    {isFullyPassed ? (
+                                      <div className="flex items-center justify-between sm:justify-start gap-2 shrink-0">
+                                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800 shrink-0">
+                                          <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                                          <span>{t.statusPassed} ({total}/{total})</span>
+                                        </span>
+                                        <button
+                                          type="button"
+                                          onClick={() => handleUndoAdmission(reg.id, 1)}
+                                          className="p-1 text-stone-400 hover:text-stone-700 hover:bg-stone-200/60 rounded-lg cursor-pointer transition-colors shrink-0"
+                                          title={`${t.undoPass} (-1)`}
+                                        >
+                                          <RotateCcw className="w-3.5 h-3.5" />
+                                        </button>
+                                      </div>
+                                    ) : isPartial ? (
+                                      <div className="flex items-center gap-1.5 shrink-0">
+                                        <button
+                                          type="button"
+                                          disabled={isCheckingIn}
+                                          onClick={() => handleConfirmAdmission(reg.id, 1)}
+                                          className="px-2.5 py-1.5 rounded-xl font-bold text-xs bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer transition-all flex items-center justify-center gap-1 shadow-xs shrink-0"
+                                          title={t.passNextGuestBtn}
+                                        >
+                                          <UserPlus className="w-3.5 h-3.5 text-emerald-200 shrink-0" />
+                                          <span>+1 ({admitted + 1}/{total})</span>
+                                        </button>
+
+                                        {remaining > 1 && (
+                                          <button
+                                            type="button"
+                                            disabled={isCheckingIn}
+                                            onClick={() => handleConfirmAdmission(reg.id, remaining)}
+                                            className="px-2 py-1.5 rounded-xl font-bold text-xs bg-slate-900 hover:bg-slate-800 text-white cursor-pointer transition-colors flex items-center justify-center gap-1 shrink-0"
+                                            title={t.passAllRemainingBtn.replace('{count}', String(remaining))}
+                                          >
+                                            <span>All ({remaining})</span>
+                                          </button>
+                                        )}
+
+                                        <button
+                                          type="button"
+                                          onClick={() => handleUndoAdmission(reg.id, 1)}
+                                          className="p-1 text-stone-400 hover:text-stone-700 hover:bg-stone-200/60 rounded-lg cursor-pointer transition-colors shrink-0"
+                                          title={`${t.undoPass} (-1)`}
+                                        >
+                                          <RotateCcw className="w-3.5 h-3.5" />
+                                        </button>
+                                      </div>
+                                    ) : (
+                                      <div className="flex items-center gap-1.5 shrink-0">
+                                        <button
+                                          type="button"
+                                          disabled={isCheckingIn}
+                                          onClick={() => handleConfirmAdmission(reg.id, 1)}
+                                          className="px-3 sm:px-4 py-2 sm:py-1.5 rounded-xl font-bold text-xs bg-slate-900 hover:bg-slate-800 text-white cursor-pointer transition-all flex items-center justify-center gap-1.5 shadow-xs shrink-0"
+                                        >
+                                          <UserCheck className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                                          <span>
+                                            {total > 1 ? `Pass 1/${total}` : t.confirmEntryBtn}
+                                          </span>
+                                        </button>
+
+                                        {total > 1 && (
+                                          <button
+                                            type="button"
+                                            disabled={isCheckingIn}
+                                            onClick={() => handleConfirmAdmission(reg.id, total)}
+                                            className="px-2 py-1.5 rounded-xl font-bold text-xs bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 cursor-pointer transition-colors shrink-0"
+                                            title={t.passAllRemainingBtn.replace('{count}', String(total))}
+                                          >
+                                            <span>All ({total})</span>
+                                          </button>
+                                        )}
+                                      </div>
+                                    )}
                                   </>
                                 )}
                               </div>
                             </div>
-
-                            <div className="flex items-center gap-2 w-full sm:w-auto justify-end shrink-0 pt-1 sm:pt-0 border-t sm:border-t-0 border-stone-100">
-                              {reg.isReservedByAdmin ? (
-                                <button
-                                  type="button"
-                                  onClick={() => handleReleaseAdminTable(reg.elementId!)}
-                                  className="px-2.5 py-1.5 rounded-xl font-bold text-xs bg-purple-100 hover:bg-purple-200 text-purple-900 border border-purple-300 cursor-pointer transition-colors flex items-center gap-1 shrink-0"
-                                >
-                                  <X className="w-3.5 h-3.5" />
-                                  <span>{t.releaseTableAdmin}</span>
-                                </button>
-                              ) : (
-                                <>
-                                  {event.blueprint && event.blueprint.elements.length > 0 && (
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        setReassigningRegistration(reg);
-                                        setTargetNewElementId(null);
-                                      }}
-                                      className="px-2.5 py-1.5 rounded-xl font-bold text-xs bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 cursor-pointer transition-colors flex items-center gap-1 shrink-0"
-                                      title={t.changeTableBtn}
-                                    >
-                                      <RotateCcw className="w-3.5 h-3.5 text-amber-700" />
-                                      <span>{t.changeTableBtn}</span>
-                                    </button>
-                                  )}
-                                  {reg.checkedIn ? (
-                                    <div className="flex items-center justify-between sm:justify-start w-full sm:w-auto gap-2">
-                                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800">
-                                        <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
-                                        <span>{t.statusPassed}</span>
-                                      </span>
-                                      <button
-                                        type="button"
-                                        onClick={() => handleUndoAdmission(reg.id)}
-                                        className="p-1 text-stone-400 hover:text-stone-700 hover:bg-stone-200/60 rounded-lg cursor-pointer transition-colors"
-                                        title={t.undoPass}
-                                      >
-                                        <RotateCcw className="w-3.5 h-3.5" />
-                                      </button>
-                                    </div>
-                                  ) : (
-                                    <button
-                                      type="button"
-                                      disabled={isCheckingIn}
-                                      onClick={() => handleConfirmAdmission(reg.id)}
-                                      className="w-full sm:w-auto px-4 py-2 sm:py-1.5 rounded-xl font-bold text-xs bg-slate-900 hover:bg-slate-800 text-white cursor-pointer transition-all flex items-center justify-center gap-1.5 shadow-xs"
-                                    >
-                                      <UserCheck className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                                      <span>{t.confirmEntryBtn}</span>
-                                    </button>
-                                  )}
-                                </>
-                              )}
-                            </div>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     )}
                   </div>

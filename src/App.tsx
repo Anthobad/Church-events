@@ -224,7 +224,7 @@ export default function App() {
       return { success: false, error: t.eventNotFound };
     }
 
-    // Require 8-digit code if event is paid
+    // Require 4-digit code if event is paid
     if (event.isPaid && !data.codeUsed) {
       return { success: false, error: t.enterEightDigitCode };
     }
@@ -285,7 +285,7 @@ export default function App() {
       }
     }
 
-    // Mark 8-digit code as claimed if event is paid
+    // Mark 4-digit code as claimed if event is paid
     if (data.codeUsed) {
       const currentCodes = getStoredAdminCodes();
       const updatedCodes = currentCodes.map((c) => {
@@ -321,7 +321,7 @@ export default function App() {
     return { success: true, registration: newRegistration };
   };
 
-  // Admin 8-Digit Code Generator
+  // Admin 4-Digit Code Generator
   const handleGenerateAdminCode = (
     eventId: string,
     userName: string,

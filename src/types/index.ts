@@ -50,12 +50,13 @@ export interface Registration {
   checkedIn?: boolean;
   checkedInAt?: string;
   checkedInBy?: string;
+  admittedCount?: number;
   isReservedByAdmin?: boolean;
 }
 
 export interface AdminReservationCode {
   id: string;
-  code: string; // 8 digits
+  code: string; // 4 digits
   eventId: string;
   userName: string;
   partySize: number;

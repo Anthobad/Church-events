@@ -532,55 +532,111 @@ export const BlueprintCanvas: React.FC<BlueprintCanvasProps> = ({
     onBlueprintChange({ ...blueprint, elements: updatedElements });
   };
 
-  // Table-packing suitability calculation
-  // "our target is to get as many tables filled without empty seats so people for example lets say a table fits 4 and 1 registers for 2 then 2 are free in that table the if next 2 people wants to register then the systems highlights only the table s that might fill out by adding them. they cant register for an empty table of 8 for example."
+  // System Recommendation & Table Prioritization Rules:
+  // 1. Prioritize all tables that already contain people (totalPeople > 0).
+  // 2. Only allow registration in empty tables (totalPeople === 0) if the ticket party size is at least half the table's capacity (Math.ceil(capacity / 2)).
+  // 3. Once a table accepts any people, it is considered not empty, so anybody can register in it regardless of numbers (as long as remaining >= partySize).
+  // 4. If the conditions are not met, gray out the table and make it unclickable.
+  // 5. If the table fits the exact amount perfectly or has remaining seats equal to the exact rest needed (remaining === partySize), highly recommend it.
   const getSuitabilityStatus = (element: SeatingElement) => {
-    if (element.type === 'label') return { suitable: false, status: 'label' };
+    if (element.type === 'label') return { suitable: false, status: 'label', remaining: 0, minRequiredForEmpty: 0 };
 
-    const { totalPeople } = getOccupancy(element.id);
-    const remaining = element.capacity - totalPeople;
+    const { totalPeople, regs } = getOccupancy(element.id);
+    const remaining = Math.max(0, element.capacity - totalPeople);
+    const isReservedByAdmin = regs.some((r) => r.isReservedByAdmin);
 
-    if (remaining <= 0) {
-      return { suitable: false, status: 'full', remaining: 0 };
+    if (element.capacity > 0 && remaining <= 0) {
+      return { suitable: false, status: 'full', remaining: 0, minRequiredForEmpty: 0 };
     }
 
+    if (isReservedByAdmin) {
+      return { suitable: false, status: 'admin_locked', remaining, minRequiredForEmpty: 0 };
+    }
+
+    // When user has not verified code or does not intend to register yet (no party size specified):
+    // "dont recommend any table or gray out any table unless they are admin reserved or full"
     if (!partySizeForHighlight || partySizeForHighlight <= 0) {
-      return { suitable: true, status: 'available', remaining };
-    }
-
-    if (element.type === 'chair') {
       return {
-        suitable: remaining >= partySizeForHighlight,
-        status: remaining >= partySizeForHighlight ? 'optimal' : 'unavailable',
-        remaining
+        suitable: true,
+        status: 'available_standard',
+        remaining,
+        minRequiredForEmpty: 0
       };
     }
 
-    // Table packing optimization:
-    // Case 1: Table has remaining seats exactly equal to party size -> PERFECT OPTIMAL FILL!
-    if (remaining === partySizeForHighlight) {
-      return { suitable: true, status: 'optimal_exact', remaining };
+    const effectivePartySize = partySizeForHighlight;
+    const minRequiredForEmpty = Math.ceil(element.capacity / 2);
+
+    if (element.type === 'chair') {
+      const canFit = remaining >= effectivePartySize;
+      return {
+        suitable: canFit,
+        status: canFit ? 'highly_recommended' : 'unavailable',
+        remaining,
+        minRequiredForEmpty: 1
+      };
     }
 
-    // Case 2: Table is partially filled (some people already seated) and can accommodate party size
-    if (totalPeople > 0 && remaining >= partySizeForHighlight) {
-      return { suitable: true, status: 'optimal_partial', remaining };
+    // Capacity constraint: Cannot seat more people than available spots
+    if (remaining < effectivePartySize) {
+      return {
+        suitable: false,
+        status: 'insufficient_seats',
+        remaining,
+        minRequiredForEmpty
+      };
     }
 
-    // Case 3: Empty table that closely matches party size (e.g., party of 4 on table of 4)
-    if (totalPeople === 0 && element.capacity <= partySizeForHighlight + 1 && remaining >= partySizeForHighlight) {
-      return { suitable: true, status: 'good_fit', remaining };
+    // EMPTY TABLE RULE: Only allowed if ticket reserves at least half capacity
+    if (totalPeople === 0) {
+      if (effectivePartySize < minRequiredForEmpty) {
+        // Condition not met: Gray out and make unclickable!
+        return {
+          suitable: false,
+          status: 'empty_below_half',
+          remaining,
+          minRequiredForEmpty
+        };
+      }
+
+      // Empty table fits exact amount perfectly! (e.g. party of 4 on table of 4) -> Highly recommended!
+      if (remaining === effectivePartySize) {
+        return {
+          suitable: true,
+          status: 'highly_recommended',
+          remaining,
+          minRequiredForEmpty
+        };
+      }
+
+      // Empty table with >= half capacity (allowed, but not prioritized over tables with people)
+      return {
+        suitable: true,
+        status: 'available_empty',
+        remaining,
+        minRequiredForEmpty
+      };
     }
 
-    // Case 4: Oversized empty table (e.g., party of 2 picking an empty table of 8 when smaller options exist)
-    if (totalPeople === 0 && element.capacity >= partySizeForHighlight + 3) {
-      return { suitable: false, status: 'oversized_empty', remaining };
+    // NON-EMPTY TABLE RULE (table already contains people):
+    // "anybody can register in it regardless numbers", and "prioritize all tables that contain people"
+    // "or a table has rest the exact amount needed then highly recommend them"
+    if (remaining === effectivePartySize) {
+      // Table has rest the exact amount needed -> HIGHLY RECOMMENDED!
+      return {
+        suitable: true,
+        status: 'highly_recommended',
+        remaining,
+        minRequiredForEmpty
+      };
     }
 
+    // Table contains people and can accommodate party size -> PRIORITIZED!
     return {
-      suitable: remaining >= partySizeForHighlight,
-      status: remaining >= partySizeForHighlight ? 'available' : 'full',
-      remaining
+      suitable: true,
+      status: 'prioritized_shared',
+      remaining,
+      minRequiredForEmpty
     };
   };
 
@@ -940,12 +996,12 @@ export const BlueprintCanvas: React.FC<BlueprintCanvasProps> = ({
           <div className="flex flex-wrap items-center gap-2 text-stone-300 text-[11px] font-medium self-end sm:self-auto">
             {seatingStats.totalChairs > 0 && (
               <span className="bg-slate-800/90 px-2 py-0.5 rounded-md border border-slate-700/80">
-                🪑 {seatingStats.availableChairs}/{seatingStats.totalChairs} {language === 'ar' ? 'كراسي شاغرة' : language === 'fr' ? 'chaises libres' : 'chairs free'}
+                {seatingStats.availableChairs}/{seatingStats.totalChairs} {language === 'ar' ? 'كراسي شاغرة' : language === 'fr' ? 'chaises libres' : 'chairs free'}
               </span>
             )}
             {seatingStats.totalTables > 0 && (
               <span className="bg-slate-800/90 px-2 py-0.5 rounded-md border border-slate-700/80">
-                🍽️ {seatingStats.availableTables}/{seatingStats.totalTables} {language === 'ar' ? 'طاولات بها مقاعد' : language === 'fr' ? 'tables ouvertes' : 'tables open'}
+                {seatingStats.availableTables}/{seatingStats.totalTables} {language === 'ar' ? 'طاولات شاغرة' : language === 'fr' ? 'tables ouvertes' : 'tables open'}
               </span>
             )}
           </div>
@@ -956,23 +1012,39 @@ export const BlueprintCanvas: React.FC<BlueprintCanvasProps> = ({
       {!isEditor && (
         <div className="flex flex-wrap items-center justify-between gap-2 text-xs bg-stone-50/80 p-2.5 rounded-xl border border-stone-200">
           <div className="flex flex-wrap items-center gap-2.5 sm:gap-3">
-            <span className="inline-flex items-center gap-1.5 font-medium text-stone-700 shrink-0">
-              <span className="w-3.5 h-3.5 rounded-sm bg-emerald-100 border-2 border-emerald-500 shrink-0" />
-              <span>{t.statusAvailable}</span>
-            </span>
-            <span className="inline-flex items-center gap-1.5 font-medium text-stone-700 shrink-0">
-              <span className="w-3.5 h-3.5 rounded-sm bg-rose-100 border-2 border-rose-400 shrink-0" />
-              <span>{t.statusReserved}</span>
-            </span>
+            {/* Highly Recommended (Star kept) */}
             {partySizeForHighlight && partySizeForHighlight > 0 && (
-              <span className="inline-flex items-center gap-1.5 font-semibold text-amber-900 shrink-0">
-                <span className="w-3.5 h-3.5 rounded-sm bg-amber-400 border-2 border-amber-600 animate-pulse shrink-0" />
-                <span>
-                  {t.optimalFitBadge} ({partySizeForHighlight} {language === 'fr' ? 'pers.' : language === 'en' ? 'guests' : 'أفراد'})
-                </span>
+              <span className="inline-flex items-center gap-1.5 font-bold text-amber-900 shrink-0">
+                <span className="w-3.5 h-3.5 rounded-sm bg-emerald-900 border-2 border-amber-500 shadow-2xs shrink-0 flex items-center justify-center text-[9px] text-amber-400 font-black">★</span>
+                <span>{t.highlyRecommendedBadge}</span>
               </span>
             )}
+
+            {/* Prioritized: Tables with guests (clean indicator, no emoji) */}
+            {partySizeForHighlight && partySizeForHighlight > 0 && (
+              <span className="inline-flex items-center gap-1.5 font-bold text-emerald-900 shrink-0">
+                <span className="w-3.5 h-3.5 rounded-sm bg-emerald-800 border-2 border-emerald-400 shadow-2xs shrink-0" />
+                <span>{t.prioritizedTableBadge}</span>
+              </span>
+            )}
+
+            {/* Available standard */}
+            <span className="inline-flex items-center gap-1.5 font-medium text-stone-700 shrink-0">
+              <span className="w-3.5 h-3.5 rounded-sm bg-slate-900 border-2 border-emerald-500 shrink-0" />
+              <span>{t.statusAvailable}</span>
+            </span>
+
+            {/* Restricted / Grayed out */}
+            <span className="inline-flex items-center gap-1.5 font-medium text-stone-500 shrink-0">
+              <span className="w-3.5 h-3.5 rounded-sm bg-slate-800 border border-slate-600 opacity-60 shrink-0" />
+              <span>
+                {partySizeForHighlight && partySizeForHighlight > 0
+                  ? t.emptyRequiresHalfBadge
+                  : (language === 'ar' ? 'غير متاح / ممتلئ' : language === 'fr' ? 'Indisponible / Complet' : 'Unavailable / Full')}
+              </span>
+            </span>
           </div>
+
           <span className="text-stone-400 flex items-center gap-1 text-[11px] shrink-0">
             <Info className="w-3.5 h-3.5 shrink-0" />
             <span>{t.selectASeatOrTable}</span>
@@ -1231,16 +1303,19 @@ export const BlueprintCanvas: React.FC<BlueprintCanvasProps> = ({
             const isCurrentlyDragging = isEditor && draggingElementId === element.id;
 
             const { totalPeople, regs } = getOccupancy(element.id);
-            const remaining = element.capacity - totalPeople;
+            const remaining = Math.max(0, element.capacity - totalPeople);
             const suitability = getSuitabilityStatus(element);
 
             const isReservedByAdmin = regs.some((r) => r.isReservedByAdmin);
             const isFullyBooked = element.capacity > 0 && remaining <= 0;
             const isBlockedOrFull = isFullyBooked || isReservedByAdmin;
-            const isNonAdminBlocked = !isEditor && !isAdmin && isBlockedOrFull;
 
-            const isOptimal = suitability.status === 'optimal_exact' || suitability.status === 'optimal_partial';
-            const isOversized = suitability.status === 'oversized_empty';
+            // For non-admin users: Gray out and make unclickable if not suitable (e.g. empty < 50% capacity, insufficient seats, full, or admin reserved)
+            const isNonAdminBlocked = !isEditor && !isAdmin && (!suitability.suitable || isBlockedOrFull);
+
+            const isHighlyRecommended = suitability.status === 'highly_recommended';
+            const isPrioritized = suitability.status === 'prioritized_shared';
+            const isEmptyBelowHalf = suitability.status === 'empty_below_half';
 
             // Styling logic based on state
             let fillColor = '#0f172a';
@@ -1255,8 +1330,8 @@ export const BlueprintCanvas: React.FC<BlueprintCanvasProps> = ({
               strokeColor = '#ffffff';
               strokeWidth = 3.5;
             } else if (isNonAdminBlocked) {
-              // Non-admin user: grayed out and neutral
-              fillColor = '#334155';
+              // Non-admin user: grayed out and unclickable
+              fillColor = '#1e293b';
               strokeColor = '#475569';
               strokeWidth = 1.5;
             } else if (isReservedByAdmin) {
@@ -1267,16 +1342,21 @@ export const BlueprintCanvas: React.FC<BlueprintCanvasProps> = ({
             } else if (isFullyBooked) {
               fillColor = '#881337';
               strokeColor = '#e11d48';
-            } else if (isOptimal) {
+            } else if (isHighlyRecommended) {
+              // Highly recommended: Exact fit or exact rest needed (Gold / vibrant emerald)
+              fillColor = '#064e3b';
+              strokeColor = '#f59e0b';
+              strokeWidth = 3.5;
+            } else if (isPrioritized) {
+              // Prioritized: Table already contains people
               fillColor = '#065f46';
               strokeColor = '#34d399';
-              strokeWidth = 3;
-            } else if (isOversized) {
-              fillColor = '#1e293b';
-              strokeColor = '#475569';
+              strokeWidth = 2.8;
             } else {
-              fillColor = '#1e293b';
+              // Available standard
+              fillColor = '#0f172a';
               strokeColor = '#10b981';
+              strokeWidth = 2;
             }
 
             const handleClick = (e: React.MouseEvent) => {
@@ -1289,7 +1369,7 @@ export const BlueprintCanvas: React.FC<BlueprintCanvasProps> = ({
                 setEditorSelectedId(element.id);
               } else {
                 if (element.type === 'label') return;
-                // For non-admin user: if table is reserved/full, it is not clickable and cannot be selected
+                // For non-admin user: if table is blocked or does not meet suitability conditions, it is not clickable
                 if (isNonAdminBlocked) {
                   return;
                 }
@@ -1314,9 +1394,9 @@ export const BlueprintCanvas: React.FC<BlueprintCanvasProps> = ({
                   isEditor
                     ? 'cursor-move'
                     : isNonAdminBlocked
-                    ? 'cursor-not-allowed opacity-40 select-none'
+                    ? 'cursor-not-allowed opacity-35 select-none'
                     : element.type !== 'label'
-                    ? 'cursor-pointer hover:opacity-90'
+                    ? 'cursor-pointer hover:opacity-95'
                     : ''
                 } ${isCurrentlyDragging ? 'opacity-80' : 'opacity-100'}`}
               >
@@ -1421,10 +1501,38 @@ export const BlueprintCanvas: React.FC<BlueprintCanvasProps> = ({
                         {element.label}
                       </text>
 
-                      {/* Prominent Available Seats Badge - ONLY shown if NOT non-admin blocked */}
+                      {/* Available Seats / Recommendation Badge - NOT shown if blocked */}
                       {!isNonAdminBlocked && (() => {
-                        const badgeW = isCompact ? 50 : (language === 'ar' ? 82 : language === 'fr' ? 80 : 72);
+                        const badgeW = isCompact ? 52 : (language === 'ar' ? 84 : language === 'fr' ? 84 : 76);
                         const badgeH = isCompact ? 13 : 17;
+
+                        let badgeFill = 'rgba(16, 185, 129, 0.25)';
+                        let badgeStroke = '#10b981';
+                        let badgeTextColor = '#a7f3d0';
+                        let badgeText = `${remaining}/${element.capacity} ${language === 'fr' ? 'dispo' : language === 'en' ? 'avail' : 'شاغر'}`;
+
+                        if (isReservedByAdmin) {
+                          badgeFill = 'rgba(192, 132, 252, 0.3)';
+                          badgeStroke = '#c084fc';
+                          badgeTextColor = '#e9d5ff';
+                          badgeText = language === 'ar' ? 'حجز مشرف' : 'Admin Lock';
+                        } else if (isFullyBooked) {
+                          badgeFill = 'rgba(239, 68, 68, 0.3)';
+                          badgeStroke = '#ef4444';
+                          badgeTextColor = '#fca5a5';
+                          badgeText = language === 'fr' ? '0/' + element.capacity + ' Complet' : language === 'en' ? '0/' + element.capacity + ' Full' : '0/' + element.capacity + ' ممتلئة';
+                        } else if (isHighlyRecommended) {
+                          badgeFill = 'rgba(245, 158, 11, 0.35)';
+                          badgeStroke = '#f59e0b';
+                          badgeTextColor = '#fde68a';
+                          badgeText = language === 'ar' ? `★ ${remaining}/${element.capacity} تطابق` : language === 'fr' ? `★ ${remaining}/${element.capacity} Idéal` : `★ ${remaining}/${element.capacity} Exact`;
+                        } else if (isPrioritized) {
+                          badgeFill = 'rgba(16, 185, 129, 0.35)';
+                          badgeStroke = '#34d399';
+                          badgeTextColor = '#6ee7b7';
+                          badgeText = language === 'ar' ? `${remaining}/${element.capacity} أولوية` : language === 'fr' ? `${remaining}/${element.capacity} Prioritaire` : `${remaining}/${element.capacity} Priority`;
+                        }
+
                         return (
                           <g>
                             <rect
@@ -1433,29 +1541,19 @@ export const BlueprintCanvas: React.FC<BlueprintCanvasProps> = ({
                               width={badgeW}
                               height={badgeH}
                               rx={badgeH / 2}
-                              fill={
-                                isReservedByAdmin
-                                  ? 'rgba(192, 132, 252, 0.3)'
-                                  : isFullyBooked
-                                  ? 'rgba(239, 68, 68, 0.3)'
-                                  : 'rgba(16, 185, 129, 0.3)'
-                              }
-                              stroke={isReservedByAdmin ? '#c084fc' : isFullyBooked ? '#ef4444' : '#10b981'}
+                              fill={badgeFill}
+                              stroke={badgeStroke}
                               strokeWidth="1"
                             />
                             <text
                               x={cx}
-                              y={cy + (isCompact ? 10 : 14)}
-                              fill={isReservedByAdmin ? '#e9d5ff' : isFullyBooked ? '#fca5a5' : '#a7f3d0'}
-                              fontSize={isCompact ? "7.5" : "9.5"}
+                              y={cy + (isCompact ? 10 : 13.5)}
+                              fill={badgeTextColor}
+                              fontSize={isCompact ? "7.5" : "9"}
                               fontWeight="800"
                               textAnchor="middle"
                             >
-                              {isReservedByAdmin
-                                ? (language === 'ar' ? 'حجز مشرف' : 'Admin Lock')
-                                : isFullyBooked
-                                ? (language === 'fr' ? '0/' + element.capacity + ' Complet' : language === 'en' ? '0/' + element.capacity + ' Full' : '0/' + element.capacity + ' ممتلئة')
-                                : `${remaining}/${element.capacity} ${language === 'fr' ? 'dispo' : language === 'en' ? 'avail' : 'شاغر'}`}
+                              {badgeText}
                             </text>
                           </g>
                         );
@@ -1469,6 +1567,8 @@ export const BlueprintCanvas: React.FC<BlueprintCanvasProps> = ({
                   const isCompact = element.width < 90 || element.height < 50;
                   const cx = element.x + element.width / 2;
                   const cy = element.y + element.height / 2;
+                  const badgeW = isCompact ? (language === 'ar' ? 62 : 68) : (language === 'ar' ? 84 : language === 'fr' ? 88 : 80);
+                  const badgeH = isCompact ? 13 : 17;
 
                   return (
                     <>
@@ -1494,10 +1594,35 @@ export const BlueprintCanvas: React.FC<BlueprintCanvasProps> = ({
                         {element.label}
                       </text>
 
-                      {/* Prominent Available Seats Badge - ONLY shown if NOT non-admin blocked */}
+                      {/* Prominent Available Seats / Recommendation Badge - NOT shown if blocked */}
                       {!isNonAdminBlocked && (() => {
-                        const badgeW = isCompact ? (language === 'ar' ? 62 : 68) : (language === 'ar' ? 80 : language === 'fr' ? 88 : 80);
-                        const badgeH = isCompact ? 14 : 18;
+                        let badgeFill = 'rgba(16, 185, 129, 0.25)';
+                        let badgeStroke = '#10b981';
+                        let badgeTextColor = '#a7f3d0';
+                        let badgeText = `${remaining}/${element.capacity} ${language === 'fr' ? 'dispo' : language === 'en' ? 'avail' : 'شاغر'}`;
+
+                        if (isReservedByAdmin) {
+                          badgeFill = 'rgba(192, 132, 252, 0.3)';
+                          badgeStroke = '#c084fc';
+                          badgeTextColor = '#e9d5ff';
+                          badgeText = language === 'ar' ? 'حجز مشرف' : 'Admin Lock';
+                        } else if (isFullyBooked) {
+                          badgeFill = 'rgba(239, 68, 68, 0.3)';
+                          badgeStroke = '#ef4444';
+                          badgeTextColor = '#fca5a5';
+                          badgeText = language === 'fr' ? '0/' + element.capacity + ' Complet' : language === 'en' ? '0/' + element.capacity + ' Full' : '0/' + element.capacity + ' ممتلئة';
+                        } else if (isHighlyRecommended) {
+                          badgeFill = 'rgba(245, 158, 11, 0.35)';
+                          badgeStroke = '#f59e0b';
+                          badgeTextColor = '#fde68a';
+                          badgeText = language === 'ar' ? `★ ${remaining}/${element.capacity} تطابق` : language === 'fr' ? `★ ${remaining}/${element.capacity} Idéal` : `★ ${remaining}/${element.capacity} Exact`;
+                        } else if (isPrioritized) {
+                          badgeFill = 'rgba(16, 185, 129, 0.35)';
+                          badgeStroke = '#34d399';
+                          badgeTextColor = '#6ee7b7';
+                          badgeText = language === 'ar' ? `${remaining}/${element.capacity} أولوية` : language === 'fr' ? `${remaining}/${element.capacity} Prioritaire` : `${remaining}/${element.capacity} Priority`;
+                        }
+
                         return (
                           <g>
                             <rect
@@ -1506,29 +1631,19 @@ export const BlueprintCanvas: React.FC<BlueprintCanvasProps> = ({
                               width={badgeW}
                               height={badgeH}
                               rx={badgeH / 2}
-                              fill={
-                                isReservedByAdmin
-                                  ? 'rgba(192, 132, 252, 0.3)'
-                                  : isFullyBooked
-                                  ? 'rgba(239, 68, 68, 0.3)'
-                                  : 'rgba(16, 185, 129, 0.3)'
-                              }
-                              stroke={isReservedByAdmin ? '#c084fc' : isFullyBooked ? '#ef4444' : '#10b981'}
+                              fill={badgeFill}
+                              stroke={badgeStroke}
                               strokeWidth="1"
                             />
                             <text
                               x={cx}
-                              y={cy + (isCompact ? 11 : 14)}
-                              fill={isReservedByAdmin ? '#e9d5ff' : isFullyBooked ? '#fca5a5' : '#a7f3d0'}
-                              fontSize={isCompact ? "8" : "9.5"}
+                              y={cy + (isCompact ? 10 : 13.5)}
+                              fill={badgeTextColor}
+                              fontSize={isCompact ? "7.5" : "9"}
                               fontWeight="800"
                               textAnchor="middle"
                             >
-                              {isReservedByAdmin
-                                ? (language === 'ar' ? 'حجز مشرف' : 'Admin Lock')
-                                : isFullyBooked
-                                ? (language === 'fr' ? '0/' + element.capacity + ' Complet' : language === 'en' ? '0/' + element.capacity + ' Full' : '0/' + element.capacity + ' ممتلئة')
-                                : `${remaining}/${element.capacity} ${language === 'fr' ? 'places' : language === 'en' ? 'seats' : 'شاغر'}`}
+                              {badgeText}
                             </text>
                           </g>
                         );

@@ -149,6 +149,10 @@ export function registrationToRow(reg: Registration) {
   if (reg.isReservedByAdmin) {
     dbCode = `ADMIN_RESERVED__${dbCode}`;
   }
+  const admittedCount = reg.admittedCount !== undefined ? reg.admittedCount : (reg.checkedIn ? reg.partySize : 0);
+  if (admittedCount > 0) {
+    dbCode = `${dbCode}__ADMITTED__${admittedCount}`;
+  }
   if (reg.checkedIn) {
     const at = reg.checkedInAt || new Date().toISOString();
     const by = reg.checkedInBy || 'Admin';
@@ -184,6 +188,15 @@ export function rowToRegistration(row: any): Registration {
   let checkedInBy: string | undefined = row.checked_in_by ? String(row.checked_in_by) : undefined;
   let codeUsed: string | undefined = undefined;
 
+  let admittedCount: number | undefined = undefined;
+  if (rawCode.includes('__ADMITTED__')) {
+    const matchAdm = rawCode.match(/__ADMITTED__(\d+)/);
+    if (matchAdm) {
+      admittedCount = parseInt(matchAdm[1], 10);
+    }
+    rawCode = rawCode.replace(/__ADMITTED__\d+/, '');
+  }
+
   if (rawCode.includes('__CHECKED_IN__')) {
     checkedIn = true;
     const [codePart, metaPart] = rawCode.split('__CHECKED_IN__');
@@ -197,20 +210,26 @@ export function rowToRegistration(row: any): Registration {
     codeUsed = rawCode ? rawCode : undefined;
   }
 
+  const partySize = Number(row.party_size || 1);
+  if (admittedCount === undefined) {
+    admittedCount = checkedIn ? partySize : 0;
+  }
+
   return {
     id: String(row.id),
     eventId: String(row.event_id),
     userName: String(row.user_name || ''),
     userPhone: String(row.user_phone || ''),
-    partySize: Number(row.party_size || 1),
+    partySize,
     elementId: row.element_id || undefined,
     elementLabel: row.element_label || undefined,
     isPaid: Boolean(row.is_paid),
     codeUsed,
     registeredAt: row.registered_at || new Date().toISOString(),
-    checkedIn,
+    checkedIn: checkedIn || (admittedCount >= partySize && partySize > 0),
     checkedInAt,
     checkedInBy,
+    admittedCount,
     isReservedByAdmin
   };
 }
@@ -780,7 +799,7 @@ export async function verifyTicketCodeLive(
 
   // Match against registration
   let matchedBy: 'TICKET_CODE' | 'ADMIN_CODE' | 'PHONE' | 'ID' | undefined;
-  const match = regsToSearch.find((r) => {
+  let match = regsToSearch.find((r) => {
     const dispCode = getTicketDisplayCode(r);
     const rawIdClean = r.id.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
     const phoneClean = r.userPhone.replace(/\D/g, '');
@@ -805,22 +824,63 @@ export async function verifyTicketCodeLive(
     return false;
   });
 
+  // If not directly found in registrations, check if it matches an admin reservation code
+  if (!match) {
+    const adminCodeMatch = inMemoryCodes.find(
+      (c) => c.eventId === eventId && cleanTicketCode(c.code) === cleanInput
+    );
+    if (adminCodeMatch) {
+      matchedBy = 'ADMIN_CODE';
+      match = regsToSearch.find(
+        (r) =>
+          (r.codeUsed && cleanTicketCode(r.codeUsed) === cleanInput) ||
+          (adminCodeMatch.userName && r.userName.toLowerCase() === adminCodeMatch.userName.toLowerCase())
+      );
+    }
+  }
+
+  // Also query Supabase church_admin_codes if still not matched locally
+  if (!match && supabase) {
+    try {
+      const { data: codeData } = await supabase
+        .from('church_admin_codes')
+        .select('*')
+        .eq('event_id', eventId)
+        .eq('code', cleanInput)
+        .maybeSingle();
+      if (codeData) {
+        matchedBy = 'ADMIN_CODE';
+        match = regsToSearch.find(
+          (r) =>
+            (r.codeUsed && cleanTicketCode(r.codeUsed) === cleanInput) ||
+            (codeData.user_name && r.userName.toLowerCase() === String(codeData.user_name).toLowerCase())
+        );
+      }
+    } catch (e) {
+      console.warn('Supabase admin code live lookup error:', e);
+    }
+  }
+
   if (!match) {
     return { status: 'INVALID', error: 'not_found' };
   }
 
-  if (match.checkedIn) {
+  const admittedCount = match.admittedCount !== undefined ? match.admittedCount : (match.checkedIn ? match.partySize : 0);
+  const isFullyAdmitted = admittedCount >= match.partySize;
+
+  if (isFullyAdmitted) {
     return { status: 'ALREADY_PASSED', registration: match, matchedBy };
   }
 
   return { status: 'VALID', registration: match, matchedBy };
 }
 
-// Atomically check-in an attendee with concurrency protection
+// Atomically check-in an attendee with concurrency protection and partial party admission support
 export async function checkInRegistrationLive(
   registrationId: string,
   eventId: string,
-  adminName: string = 'Admin'
+  adminName: string = 'Admin',
+  countToAdmit: number = 1
 ): Promise<{
   success: boolean;
   status: 'CHECKED_IN' | 'ALREADY_PASSED' | 'ERROR';
@@ -850,8 +910,12 @@ export async function checkInRegistrationLive(
     return { success: false, status: 'ERROR', error: 'not_found' };
   }
 
-  // Concurrency guard: If already checked in by another verifier, halt immediately
-  if (currentReg.checkedIn) {
+  const currentAdmitted = currentReg.admittedCount !== undefined
+    ? currentReg.admittedCount
+    : (currentReg.checkedIn ? currentReg.partySize : 0);
+
+  // Concurrency guard: If already fully checked in, halt immediately
+  if (currentAdmitted >= currentReg.partySize) {
     return {
       success: false,
       status: 'ALREADY_PASSED',
@@ -860,10 +924,15 @@ export async function checkInRegistrationLive(
     };
   }
 
+  const increment = Math.max(1, countToAdmit);
+  const newAdmitted = Math.min(currentReg.partySize, currentAdmitted + increment);
+  const isFullyCheckedIn = newAdmitted >= currentReg.partySize;
   const checkInTimestamp = new Date().toISOString();
+
   const updatedReg: Registration = {
     ...currentReg,
-    checkedIn: true,
+    admittedCount: newAdmitted,
+    checkedIn: isFullyCheckedIn,
     checkedInAt: checkInTimestamp,
     checkedInBy: adminName
   };
@@ -891,19 +960,28 @@ export async function checkInRegistrationLive(
   return { success: true, status: 'CHECKED_IN', registration: updatedReg };
 }
 
-// Undo check-in in case of error
+// Undo check-in in case of error (decrements admitted count by countToUndo)
 export async function undoCheckInLive(
   registrationId: string,
-  eventId: string
+  eventId: string,
+  countToUndo: number = 1
 ): Promise<{ success: boolean; registration?: Registration }> {
   const currentReg = inMemoryRegistrations.find((r) => r.id === registrationId);
   if (!currentReg) return { success: false };
 
+  const currentAdmitted = currentReg.admittedCount !== undefined
+    ? currentReg.admittedCount
+    : (currentReg.checkedIn ? currentReg.partySize : 0);
+
+  const decrement = Math.max(1, countToUndo);
+  const newAdmitted = Math.max(0, currentAdmitted - decrement);
+
   const updatedReg: Registration = {
     ...currentReg,
-    checkedIn: false,
-    checkedInAt: undefined,
-    checkedInBy: undefined
+    admittedCount: newAdmitted,
+    checkedIn: newAdmitted >= currentReg.partySize && currentReg.partySize > 0,
+    checkedInAt: newAdmitted === 0 ? undefined : currentReg.checkedInAt,
+    checkedInBy: newAdmitted === 0 ? undefined : currentReg.checkedInBy
   };
 
   const updatedList = inMemoryRegistrations.map((r) =>

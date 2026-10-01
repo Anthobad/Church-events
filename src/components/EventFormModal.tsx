@@ -583,7 +583,7 @@ export const EventFormModal: React.FC<EventFormModalProps> = ({
                 )}
               </div>
 
-              {/* 4. SWITCH AT THE END: PAID EVENT (REQUIRES 8-DIGIT CODE) */}
+              {/* 4. SWITCH AT THE END: PAID EVENT (REQUIRES 4-DIGIT CODE) */}
               <div className="bg-amber-50/70 p-4 sm:p-5 rounded-2xl border border-amber-200 flex items-center justify-between gap-4">
                 <div className="flex items-start gap-3">
                   <div className="p-2 rounded-xl bg-amber-100 text-amber-900 mt-0.5">

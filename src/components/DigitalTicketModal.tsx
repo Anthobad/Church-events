@@ -83,7 +83,12 @@ export const DigitalTicketModal: React.FC<DigitalTicketModalProps> = ({
             {registration.checkedIn ? (
               <>
                 <ShieldCheck className="w-3.5 h-3.5 text-emerald-300" />
-                <span className="text-emerald-200">{t.statusPassed}</span>
+                <span className="text-emerald-200">{t.statusPassed} ({registration.partySize}/{registration.partySize})</span>
+              </>
+            ) : registration.admittedCount !== undefined && registration.admittedCount > 0 ? (
+              <>
+                <Clock className="w-3.5 h-3.5 text-amber-300" />
+                <span className="text-amber-100">{registration.admittedCount}/{registration.partySize} {language === 'ar' ? 'دخلوا' : 'Admitted'}</span>
               </>
             ) : (
               <>
@@ -205,6 +210,12 @@ export const DigitalTicketModal: React.FC<DigitalTicketModalProps> = ({
             <p className="text-[11px] text-center text-stone-500 italic pt-1">
               {t.showTicketAtDoorPrompt}
             </p>
+
+            {registration.partySize > 1 && (
+              <div className="p-2.5 rounded-xl bg-amber-50/70 border border-amber-200/60 text-[11px] text-amber-900 text-center font-medium">
+                {t.groupLateEntryNotice}
+              </div>
+            )}
           </div>
         </div>
 
