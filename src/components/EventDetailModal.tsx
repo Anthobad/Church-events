@@ -726,9 +726,17 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
     );
 
     setJustGeneratedCode(newCode);
+    setEightDigitCodeInput(newCode.code);
     setAdminAttendeeName('');
     setAdminPartySize(2);
     setCopiedCode(false);
+  };
+
+  const handleApplyCodeDirectly = (codeItem: AdminReservationCode) => {
+    setVerifiedAdminCode(codeItem);
+    setUserName(codeItem.userName);
+    setPartySize(codeItem.partySize);
+    setEightDigitCodeInput(codeItem.code);
   };
 
   const copyToClipboard = (text: string) => {
@@ -1414,305 +1422,138 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
 
               {/* Paid Event Code Entry Step - Shown inside this box for Admin */}
               {isAdmin && event.isPaid && !verifiedAdminCode && (
-                <div className="space-y-3 mb-5 p-4 bg-amber-50/80 rounded-xl border border-amber-200">
-                  <label htmlFor={codeInputId} className="block text-xs font-bold text-amber-950">
-                    {t.enterEightDigitCode}
-                  </label>
-                  <div className="flex flex-wrap sm:flex-nowrap gap-2">
-                    <input
-                      id={codeInputId}
-                      type="text"
-                      maxLength={8}
-                      value={eightDigitCodeInput}
-                      onChange={(e) => setEightDigitCodeInput(e.target.value.replace(/\D/g, ''))}
-                      placeholder={t.codePlaceholder}
-                      className="flex-1 px-4 py-2.5 rounded-xl border border-amber-300 font-mono text-base font-bold tracking-widest text-slate-900 bg-white focus:outline-hidden focus:ring-2 focus:ring-amber-600 min-w-0"
-                    />
-                    <button
-                      type="button"
-                      onClick={handleVerifyCode}
-                      className="px-4 sm:px-5 py-2.5 rounded-xl text-xs sm:text-sm font-bold bg-amber-700 hover:bg-amber-800 text-white transition-colors cursor-pointer shadow-xs shrink-0 whitespace-nowrap"
-                    >
-                      {t.verifyCodeBtn}
-                    </button>
-                  </div>
-                  <p className="text-[11px] text-amber-800/80">
-                    {t.paidCodeHelpText}
-                  </p>
-                </div>
-              )}
-
-              {/* When code is verified (shown for Admin here) */}
-              {isAdmin && event.isPaid && verifiedAdminCode && (
-                <div className="mb-5 p-3.5 bg-emerald-50 rounded-xl border border-emerald-200 flex flex-wrap sm:flex-nowrap items-center justify-between gap-2 text-xs text-emerald-900">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                    <span className="truncate">
-                      {t.codeVerifiedFor}
-                      <strong>{verifiedAdminCode.userName}</strong> ({verifiedAdminCode.partySize} {t.guestsCount})
-                    </span>
-                  </div>
-                  <span className="font-mono font-bold bg-emerald-100 px-2 py-0.5 rounded text-emerald-800 shrink-0">
-                    {verifiedAdminCode.code}
-                  </span>
-                </div>
-              )}
-
-              {/* Registration Form */}
-              {(!event.isPaid || verifiedAdminCode) && (
-                <form onSubmit={handleSubmitRegistration} className="space-y-4">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div>
-                      <label htmlFor={nameInputId} className="block text-xs font-semibold text-stone-700 mb-1">
-                        {t.attendeeName} *
-                      </label>
+                <div className="space-y-4 mb-5">
+                  {/* Enter & Verify 4-Digit Code Box */}
+                  <div className="space-y-3 p-4 bg-amber-50/80 rounded-2xl border border-amber-200">
+                    <label htmlFor={codeInputId} className="block text-xs font-bold text-amber-950">
+                      {t.enterEightDigitCode}
+                    </label>
+                    <div className="flex flex-wrap sm:flex-nowrap gap-2">
                       <input
-                        id={nameInputId}
+                        id={codeInputId}
                         type="text"
-                        required
-                        value={userName}
-                        onChange={(e) => setUserName(e.target.value)}
-                        readOnly={Boolean(verifiedAdminCode)}
-                        placeholder={t.namePlaceholder}
-                        className="w-full px-3.5 py-2 rounded-xl border border-stone-300 text-sm font-medium text-stone-900 bg-white focus:outline-hidden focus:ring-2 focus:ring-amber-600"
+                        maxLength={8}
+                        value={eightDigitCodeInput}
+                        onChange={(e) => setEightDigitCodeInput(e.target.value.replace(/\D/g, ''))}
+                        placeholder={t.codePlaceholder}
+                        className="flex-1 px-4 py-2.5 rounded-xl border border-amber-300 font-mono text-base font-bold tracking-widest text-slate-900 bg-white focus:outline-hidden focus:ring-2 focus:ring-amber-600 min-w-0"
                       />
-                    </div>
-
-                    <div>
-                      <label htmlFor={phoneInputId} className="block text-xs font-semibold text-stone-700 mb-1">
-                        {t.attendeePhone}
-                      </label>
-                      <input
-                        id={phoneInputId}
-                        type="tel"
-                        value={userPhone}
-                        onChange={(e) => setUserPhone(e.target.value)}
-                        placeholder="+961 70 000000"
-                        className="w-full px-3.5 py-2 rounded-xl border border-stone-300 text-sm font-medium text-stone-900 bg-white focus:outline-hidden focus:ring-2 focus:ring-amber-600"
-                      />
-                    </div>
-                  </div>
-
-                  {/* Party Size Selector (For free events or when table has flexible capacity) */}
-                  {!event.isPaid && (!selectedElement || selectedElement.type.startsWith('table')) && (
-                    <div className="pt-2">
-                      <label htmlFor={partySizeInputId} className="block text-xs font-semibold text-stone-700 mb-1">
-                        {t.numberOfPeople} ({partySize} {t.personUnit})
-                      </label>
-                      <div className="flex items-center gap-3">
-                        <input
-                          id={partySizeInputId}
-                          type="range"
-                          min="1"
-                          max={selectedElement ? selectedElement.capacity : 10}
-                          value={partySize}
-                          onChange={(e) => {
-                            const newSize = parseInt(e.target.value);
-                            setPartySize(newSize);
-                            setActiveFreePartySize(newSize);
-                          }}
-                          className="flex-1 accent-amber-700 cursor-pointer"
-                        />
-                        <span className="font-bold text-sm text-stone-900 w-8 text-center shrink-0">
-                          {partySize}
-                        </span>
-                      </div>
-                      <p className="text-[11px] text-stone-500 mt-1">
-                        {t.optimalFitFitNote}
-                      </p>
-                    </div>
-                  )}
-
-                  {/* Submit Button */}
-                  <div className="pt-3">
-                    <button
-                      id="submit-registration-btn"
-                      type="submit"
-                      disabled={isSubmitting}
-                      className="w-full py-3 px-4 rounded-xl font-bold text-xs sm:text-sm text-white bg-amber-700 hover:bg-amber-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-md hover:shadow-lg cursor-pointer flex items-center justify-center gap-2 whitespace-normal break-words shrink-0"
-                    >
-                      {isSubmitting ? (
-                        <Loader2 className="w-4 h-4 animate-spin shrink-0" />
-                      ) : (
-                        <CheckCircle2 className="w-4 h-4 shrink-0" />
-                      )}
-                      <span className="text-center">{event.isPaid ? t.verifyAndReserve : t.completeFreeRegistration}</span>
-                    </button>
-                  </div>
-                </form>
-              )}
-            </div>
-          )}
-
-          {/* ================================================================= */}
-          {/* ADMIN MANAGEMENT PANEL (Visible only when Admin is logged in) */}
-          {/* ================================================================= */}
-          {isAdmin && (
-            <div
-              id="admin-event-management-panel"
-              className="mt-8 pt-6 border-t-2 border-dashed border-amber-300 bg-amber-50/40 p-5 sm:p-6 rounded-3xl"
-            >
-              {/* Admin Header & Tabs */}
-              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-6">
-                <div className="flex items-center gap-2 min-w-0">
-                  <div className="w-9 h-9 rounded-xl bg-amber-600 flex items-center justify-center text-white shadow-sm shrink-0">
-                    <ShieldCheck className="w-5 h-5" />
-                  </div>
-                  <div className="min-w-0">
-                    <h3 className="text-base font-extrabold text-slate-900 leading-tight truncate">
-                      {language === 'ar' ? 'لوحة تحكم المشرف وإدارة الدخول' : language === 'fr' ? 'Panneau d\'administration et contrôle d\'entrée' : 'Admin Control & Entrance Verification'}
-                    </h3>
-                    <p className="text-[11px] text-stone-500 flex items-center gap-1.5">
-                      <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block animate-pulse shrink-0"></span>
-                      <span className="truncate">{t.multiAdminSyncNotice}</span>
-                    </p>
-                  </div>
-                </div>
-
-                {/* Tab Selectors with Desktop Mouse Wheel, Drag-to-Scroll & Chevron Arrow Navigation */}
-                <div className="relative flex items-center min-w-0 max-w-full">
-                  {/* Left Scroll Chevron for Desktop Mouse Users */}
-                  {isTabsOverflowing && (
-                    <button
-                      type="button"
-                      onClick={() => handleScrollTabs('left')}
-                      className={`flex items-center justify-center w-7 h-7 rounded-full bg-white shadow-md border border-amber-200/90 text-stone-700 hover:text-amber-800 hover:bg-amber-50 shrink-0 z-10 -me-2.5 transition-all cursor-pointer ${
-                        canScrollTabsLeft ? 'opacity-95 hover:opacity-100 hover:scale-105' : 'opacity-30 pointer-events-none'
-                      }`}
-                      title={language === 'ar' ? 'التمرير لليمين' : 'Scroll left'}
-                      aria-label="Scroll tabs left"
-                    >
-                      <ChevronLeft className="w-4 h-4" />
-                    </button>
-                  )}
-
-                  <div
-                    ref={adminTabsRef}
-                    onMouseDown={handleTabsMouseDown}
-                    onMouseMove={handleTabsMouseMove}
-                    onMouseUp={handleTabsMouseUpOrLeave}
-                    onMouseLeave={handleTabsMouseUpOrLeave}
-                    className="flex items-center gap-1.5 bg-white p-1 rounded-2xl border border-amber-200/80 shadow-xs overflow-x-auto max-w-full select-none cursor-grab active:cursor-grabbing scroll-smooth"
-                    style={{ scrollbarWidth: 'thin' }}
-                  >
-                    <button
-                      type="button"
-                      onClick={() => switchAdminTab('verify')}
-                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap shrink-0 ${
-                        adminTab === 'verify'
-                          ? 'bg-amber-700 text-white shadow-xs'
-                          : 'text-stone-600 hover:text-stone-900 hover:bg-stone-100'
-                      }`}
-                    >
-                      <ScanLine className="w-3.5 h-3.5 shrink-0" />
-                      <span>{t.ticketVerificationTab}</span>
-                      <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
-                        adminTab === 'verify' ? 'bg-amber-800 text-amber-200' : 'bg-stone-100 text-stone-600'
-                      }`}>
-                        {admittedTicketsCount}/{totalRegistrationsCount}
-                      </span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => switchAdminTab('registrations')}
-                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap shrink-0 ${
-                        adminTab === 'registrations'
-                          ? 'bg-amber-700 text-white shadow-xs'
-                          : 'text-stone-600 hover:text-stone-900 hover:bg-stone-100'
-                      }`}
-                    >
-                      <Users className="w-3.5 h-3.5 shrink-0" />
-                      <span>{t.registrationsList}</span>
-                      <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
-                        adminTab === 'registrations' ? 'bg-amber-800 text-amber-200' : 'bg-stone-100 text-stone-600'
-                      }`}>
-                        {eventRegistrations.length}
-                      </span>
-                    </button>
-
-                    {event.isPaid && event.type !== 'open' && (
                       <button
                         type="button"
-                        onClick={() => switchAdminTab('generator')}
-                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap shrink-0 ${
-                          adminTab === 'generator'
-                            ? 'bg-amber-700 text-white shadow-xs'
-                            : 'text-stone-600 hover:text-stone-900 hover:bg-stone-100'
-                        }`}
+                        onClick={handleVerifyCode}
+                        className="px-4 sm:px-5 py-2.5 rounded-xl text-xs sm:text-sm font-bold bg-amber-700 hover:bg-amber-800 text-white transition-colors cursor-pointer shadow-xs shrink-0 whitespace-nowrap"
                       >
-                        <KeyRound className="w-3.5 h-3.5 shrink-0" />
-                        <span>{t.adminReservationSection}</span>
+                        {t.verifyCodeBtn}
                       </button>
+                    </div>
+                    <p className="text-[11px] text-amber-800/80">
+                      {t.paidCodeHelpText}
+                    </p>
+                  </div>
+
+                  {/* Admin Desk: Register Member & Generate 4-Digit Code Box (Moved right under code entry) */}
+                  <div
+                    id="admin-quick-code-generator-box"
+                    className="p-4 sm:p-5 rounded-2xl bg-white border border-amber-300/90 shadow-xs space-y-3.5"
+                  >
+                    <div className="flex items-start gap-2.5">
+                      <div className="p-2 rounded-xl bg-amber-100 text-amber-900 shrink-0 mt-0.5">
+                        <KeyRound className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-extrabold text-slate-900">
+                          {t.adminReservationSection}
+                        </h4>
+                        <p className="text-xs text-stone-500 leading-relaxed">
+                          {t.adminReservationDesc}
+                        </p>
+                      </div>
+                    </div>
+
+                    <form
+                      onSubmit={handleAdminGenerateCode}
+                      className="space-y-3 pt-1"
+                    >
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                          <label htmlFor={adminNameInputId} className="block text-xs font-bold text-stone-700 mb-1">
+                            {t.attendeeName} *
+                          </label>
+                          <input
+                            id={adminNameInputId}
+                            type="text"
+                            required
+                            value={adminAttendeeName}
+                            onChange={(e) => setAdminAttendeeName(e.target.value)}
+                            placeholder={t.adminNamePlaceholder}
+                            className="w-full px-3 py-2 rounded-xl border border-stone-300 text-xs font-medium text-stone-900 focus:outline-hidden focus:ring-2 focus:ring-amber-600 bg-stone-50/40"
+                          />
+                        </div>
+
+                        <div>
+                          <label htmlFor={adminSizeInputId} className="block text-xs font-bold text-stone-700 mb-1">
+                            {t.numberOfPeople} *
+                          </label>
+                          <input
+                            id={adminSizeInputId}
+                            type="number"
+                            min="1"
+                            max="20"
+                            required
+                            value={adminPartySize}
+                            onChange={(e) => setAdminPartySize(Math.max(1, parseInt(e.target.value) || 1))}
+                            className="w-full px-3 py-2 rounded-xl border border-stone-300 text-xs font-medium text-stone-900 focus:outline-hidden focus:ring-2 focus:ring-amber-600 bg-stone-50/40"
+                          />
+                        </div>
+                      </div>
+
+                      <button
+                        id="admin-generate-code-submit-btn"
+                        type="submit"
+                        className="w-full py-2.5 px-3 rounded-xl text-xs sm:text-sm font-bold bg-slate-900 hover:bg-slate-800 text-white transition-colors cursor-pointer flex items-center justify-center gap-2 shrink-0 whitespace-normal text-center shadow-xs"
+                      >
+                        <KeyRound className="w-4 h-4 text-amber-400 shrink-0" />
+                        <span>{t.generateCodeBtn}</span>
+                      </button>
+                    </form>
+
+                    {/* Display Newly Generated Code with Copy & 1-Click Verification */}
+                    {justGeneratedCode && (
+                      <div className="p-4 rounded-2xl bg-gradient-to-r from-amber-600 to-amber-700 text-white shadow-md animate-in zoom-in-95 duration-200 space-y-2">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <span className="text-xs font-semibold text-amber-100">{t.generatedCodeIs}</span>
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => copyToClipboard(justGeneratedCode.code)}
+                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white/20 hover:bg-white/30 text-xs font-bold cursor-pointer transition-colors shrink-0"
+                            >
+                              {copiedCode ? <Check className="w-3.5 h-3.5 shrink-0" /> : <Copy className="w-3.5 h-3.5 shrink-0" />}
+                              <span>{copiedCode ? t.copiedText : t.copyText}</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleApplyCodeDirectly(justGeneratedCode)}
+                              className="inline-flex items-center gap-1 px-3 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-extrabold cursor-pointer transition-colors shadow-xs shrink-0"
+                            >
+                              <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                              <span>{language === 'ar' ? 'استخدام وتفعيل الرمز الآن' : language === 'fr' ? 'Utiliser et vérifier ce code' : 'Apply & Verify Now'}</span>
+                            </button>
+                          </div>
+                        </div>
+                        <div className="text-2xl sm:text-3xl font-extrabold tracking-widest font-mono text-white select-all">
+                          {justGeneratedCode.code}
+                        </div>
+                        <p className="text-xs text-amber-100/90 leading-relaxed">{t.codeInstructions}</p>
+                      </div>
                     )}
                   </div>
 
-                  {/* Right Scroll Chevron for Desktop Mouse Users */}
-                  {isTabsOverflowing && (
-                    <button
-                      type="button"
-                      onClick={() => handleScrollTabs('right')}
-                      className={`flex items-center justify-center w-7 h-7 rounded-full bg-white shadow-md border border-amber-200/90 text-stone-700 hover:text-amber-800 hover:bg-amber-50 shrink-0 z-10 -ms-2.5 transition-all cursor-pointer ${
-                        canScrollTabsRight ? 'opacity-95 hover:opacity-100 hover:scale-105' : 'opacity-30 pointer-events-none'
-                      }`}
-                      title={language === 'ar' ? 'التمرير لليسار' : 'Scroll right'}
-                      aria-label="Scroll tabs right"
-                    >
-                      <ChevronRight className="w-4 h-4" />
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              {/* ============================================================ */}
-              {/* TAB 1: TICKET VERIFICATION & ENTRANCE CONTROL                */}
-              {/* ============================================================ */}
-              {adminTab === 'verify' && (
-                <div className="space-y-6">
-                  {/* Live Entrance Metrics Dashboard */}
-                  <div className="bg-white p-4 sm:p-5 rounded-2xl border border-stone-200 shadow-xs">
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
-                      <div>
-                        <span className="text-xs font-bold text-stone-500 uppercase tracking-wider block">
-                          {t.admissionStats}
-                        </span>
-                        <div className="flex items-baseline gap-2 flex-wrap">
-                          <span className="text-2xl sm:text-3xl font-black text-slate-900">
-                            {admittedGuestsCount}
-                          </span>
-                          <span className="text-xs sm:text-sm font-semibold text-stone-500">
-                            / {totalGuestsCount} {t.guestsCount} ({admittedTicketsCount}/{totalRegistrationsCount} {language === 'ar' ? 'تذاكر' : 'tickets'})
-                          </span>
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-2 sm:flex items-center gap-2 w-full sm:w-auto">
-                        <div className="px-2.5 sm:px-3 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold flex items-center justify-center sm:justify-start gap-1.5 min-w-0">
-                          <UserCheck className="w-4 h-4 text-emerald-600 shrink-0" />
-                          <span className="truncate">{t.passedCount}: {admittedGuestsCount}</span>
-                        </div>
-                        <div className="px-2.5 sm:px-3 py-1.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs font-bold flex items-center justify-center sm:justify-start gap-1.5 min-w-0">
-                          <Clock className="w-4 h-4 text-amber-700 shrink-0" />
-                          <span className="truncate">{t.remainingToEnter}: {pendingGuestsCount}</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Progress Bar */}
-                    <div className="w-full bg-stone-100 h-2.5 rounded-full overflow-hidden border border-stone-200">
-                      <div
-                        className="bg-gradient-to-r from-amber-600 to-emerald-600 h-full transition-all duration-500 rounded-full"
-                        style={{ width: `${Math.min(100, admissionPercentage)}%` }}
-                      />
-                    </div>
-                    <div className="flex justify-between items-center text-[11px] text-stone-500 mt-1.5">
-                      <span>{admissionPercentage}% {language === 'ar' ? 'من الحضور اكتمل دخولهم' : 'admitted'}</span>
-                      <span>{t.multiAdminSyncNotice}</span>
-                    </div>
-                  </div>
-
-                  {/* Verification Form Box */}
-                  <div className="bg-white p-5 rounded-2xl border border-amber-300 shadow-sm relative overflow-hidden">
+                  {/* Verify & Validate Tickets & Entrance Passes Box (Moved here to eliminate scrolling) */}
+                  <div
+                    id="admin-quick-ticket-validator-box"
+                    className="p-4 sm:p-5 rounded-2xl bg-white border border-amber-300 shadow-sm relative overflow-hidden"
+                  >
                     <div className="mb-4">
                       <h4 className="text-sm font-extrabold text-slate-900 flex items-center gap-2 mb-1">
                         <ScanLine className="w-4 h-4 text-amber-700" />
@@ -2163,6 +2004,299 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
                       </div>
                     )}
                   </div>
+                </div>
+              )}
+
+              {/* When code is verified (shown for Admin here) */}
+              {isAdmin && event.isPaid && verifiedAdminCode && (
+                <div className="mb-5 p-3.5 bg-emerald-50 rounded-xl border border-emerald-200 flex flex-wrap sm:flex-nowrap items-center justify-between gap-2 text-xs text-emerald-900">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <span className="truncate">
+                      {t.codeVerifiedFor}
+                      <strong>{verifiedAdminCode.userName}</strong> ({verifiedAdminCode.partySize} {t.guestsCount})
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className="font-mono font-bold bg-emerald-100 px-2 py-0.5 rounded text-emerald-800 shrink-0">
+                      {verifiedAdminCode.code}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setVerifiedAdminCode(null);
+                        setUserName('');
+                        setPartySize(2);
+                        setEightDigitCodeInput('');
+                        setSelectedElement(null);
+                      }}
+                      className="text-stone-500 hover:text-stone-900 text-xs font-semibold underline cursor-pointer"
+                    >
+                      {language === 'ar' ? 'تغيير' : language === 'fr' ? 'Changer' : 'Change'}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Registration Form */}
+              {(!event.isPaid || verifiedAdminCode) && (
+                <form onSubmit={handleSubmitRegistration} className="space-y-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label htmlFor={nameInputId} className="block text-xs font-semibold text-stone-700 mb-1">
+                        {t.attendeeName} *
+                      </label>
+                      <input
+                        id={nameInputId}
+                        type="text"
+                        required
+                        value={userName}
+                        onChange={(e) => setUserName(e.target.value)}
+                        readOnly={Boolean(verifiedAdminCode)}
+                        placeholder={t.namePlaceholder}
+                        className="w-full px-3.5 py-2 rounded-xl border border-stone-300 text-sm font-medium text-stone-900 bg-white focus:outline-hidden focus:ring-2 focus:ring-amber-600"
+                      />
+                    </div>
+
+                    <div>
+                      <label htmlFor={phoneInputId} className="block text-xs font-semibold text-stone-700 mb-1">
+                        {t.attendeePhone}
+                      </label>
+                      <input
+                        id={phoneInputId}
+                        type="tel"
+                        value={userPhone}
+                        onChange={(e) => setUserPhone(e.target.value)}
+                        placeholder="+961 70 000000"
+                        className="w-full px-3.5 py-2 rounded-xl border border-stone-300 text-sm font-medium text-stone-900 bg-white focus:outline-hidden focus:ring-2 focus:ring-amber-600"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Party Size Selector (For free events or when table has flexible capacity) */}
+                  {!event.isPaid && (!selectedElement || selectedElement.type.startsWith('table')) && (
+                    <div className="pt-2">
+                      <label htmlFor={partySizeInputId} className="block text-xs font-semibold text-stone-700 mb-1">
+                        {t.numberOfPeople} ({partySize} {t.personUnit})
+                      </label>
+                      <div className="flex items-center gap-3">
+                        <input
+                          id={partySizeInputId}
+                          type="range"
+                          min="1"
+                          max={selectedElement ? selectedElement.capacity : 10}
+                          value={partySize}
+                          onChange={(e) => {
+                            const newSize = parseInt(e.target.value);
+                            setPartySize(newSize);
+                            setActiveFreePartySize(newSize);
+                          }}
+                          className="flex-1 accent-amber-700 cursor-pointer"
+                        />
+                        <span className="font-bold text-sm text-stone-900 w-8 text-center shrink-0">
+                          {partySize}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-stone-500 mt-1">
+                        {t.optimalFitFitNote}
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Submit Button */}
+                  <div className="pt-3">
+                    <button
+                      id="submit-registration-btn"
+                      type="submit"
+                      disabled={isSubmitting}
+                      className="w-full py-3 px-4 rounded-xl font-bold text-xs sm:text-sm text-white bg-amber-700 hover:bg-amber-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-md hover:shadow-lg cursor-pointer flex items-center justify-center gap-2 whitespace-normal break-words shrink-0"
+                    >
+                      {isSubmitting ? (
+                        <Loader2 className="w-4 h-4 animate-spin shrink-0" />
+                      ) : (
+                        <CheckCircle2 className="w-4 h-4 shrink-0" />
+                      )}
+                      <span className="text-center">{event.isPaid ? t.verifyAndReserve : t.completeFreeRegistration}</span>
+                    </button>
+                  </div>
+                </form>
+              )}
+            </div>
+          )}
+
+          {/* ================================================================= */}
+          {/* ADMIN MANAGEMENT PANEL (Visible only when Admin is logged in) */}
+          {/* ================================================================= */}
+          {isAdmin && (
+            <div
+              id="admin-event-management-panel"
+              className="mt-8 pt-6 border-t-2 border-dashed border-amber-300 bg-amber-50/40 p-5 sm:p-6 rounded-3xl"
+            >
+              {/* Admin Header & Tabs */}
+              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-6">
+                <div className="flex items-center gap-2 min-w-0">
+                  <div className="w-9 h-9 rounded-xl bg-amber-600 flex items-center justify-center text-white shadow-sm shrink-0">
+                    <ShieldCheck className="w-5 h-5" />
+                  </div>
+                  <div className="min-w-0">
+                    <h3 className="text-base font-extrabold text-slate-900 leading-tight truncate">
+                      {language === 'ar' ? 'لوحة تحكم المشرف وإدارة الدخول' : language === 'fr' ? 'Panneau d\'administration et contrôle d\'entrée' : 'Admin Control & Entrance Verification'}
+                    </h3>
+                    <p className="text-[11px] text-stone-500 flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block animate-pulse shrink-0"></span>
+                      <span className="truncate">{t.multiAdminSyncNotice}</span>
+                    </p>
+                  </div>
+                </div>
+
+                {/* Tab Selectors with Desktop Mouse Wheel, Drag-to-Scroll & Chevron Arrow Navigation */}
+                <div className="relative flex items-center min-w-0 max-w-full">
+                  {/* Left Scroll Chevron for Desktop Mouse Users */}
+                  {isTabsOverflowing && (
+                    <button
+                      type="button"
+                      onClick={() => handleScrollTabs('left')}
+                      className={`flex items-center justify-center w-7 h-7 rounded-full bg-white shadow-md border border-amber-200/90 text-stone-700 hover:text-amber-800 hover:bg-amber-50 shrink-0 z-10 -me-2.5 transition-all cursor-pointer ${
+                        canScrollTabsLeft ? 'opacity-95 hover:opacity-100 hover:scale-105' : 'opacity-30 pointer-events-none'
+                      }`}
+                      title={language === 'ar' ? 'التمرير لليمين' : 'Scroll left'}
+                      aria-label="Scroll tabs left"
+                    >
+                      <ChevronLeft className="w-4 h-4" />
+                    </button>
+                  )}
+
+                  <div
+                    ref={adminTabsRef}
+                    onMouseDown={handleTabsMouseDown}
+                    onMouseMove={handleTabsMouseMove}
+                    onMouseUp={handleTabsMouseUpOrLeave}
+                    onMouseLeave={handleTabsMouseUpOrLeave}
+                    className="flex items-center gap-1.5 bg-white p-1 rounded-2xl border border-amber-200/80 shadow-xs overflow-x-auto max-w-full select-none cursor-grab active:cursor-grabbing scroll-smooth"
+                    style={{ scrollbarWidth: 'thin' }}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => switchAdminTab('verify')}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap shrink-0 ${
+                        adminTab === 'verify'
+                          ? 'bg-amber-700 text-white shadow-xs'
+                          : 'text-stone-600 hover:text-stone-900 hover:bg-stone-100'
+                      }`}
+                    >
+                      <ScanLine className="w-3.5 h-3.5 shrink-0" />
+                      <span>{t.ticketVerificationTab}</span>
+                      <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+                        adminTab === 'verify' ? 'bg-amber-800 text-amber-200' : 'bg-stone-100 text-stone-600'
+                      }`}>
+                        {admittedTicketsCount}/{totalRegistrationsCount}
+                      </span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => switchAdminTab('registrations')}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap shrink-0 ${
+                        adminTab === 'registrations'
+                          ? 'bg-amber-700 text-white shadow-xs'
+                          : 'text-stone-600 hover:text-stone-900 hover:bg-stone-100'
+                      }`}
+                    >
+                      <Users className="w-3.5 h-3.5 shrink-0" />
+                      <span>{t.registrationsList}</span>
+                      <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+                        adminTab === 'registrations' ? 'bg-amber-800 text-amber-200' : 'bg-stone-100 text-stone-600'
+                      }`}>
+                        {eventRegistrations.length}
+                      </span>
+                    </button>
+
+                    {event.isPaid && event.type !== 'open' && (
+                      <button
+                        type="button"
+                        onClick={() => switchAdminTab('generator')}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap shrink-0 ${
+                          adminTab === 'generator'
+                            ? 'bg-amber-700 text-white shadow-xs'
+                            : 'text-stone-600 hover:text-stone-900 hover:bg-stone-100'
+                        }`}
+                      >
+                        <KeyRound className="w-3.5 h-3.5 shrink-0" />
+                        <span>{t.issuedCodesTitle}</span>
+                        <span
+                          className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${
+                            adminTab === 'generator' ? 'bg-amber-800 text-amber-100' : 'bg-stone-200 text-stone-700'
+                          }`}
+                        >
+                          {eventCodes.length}
+                        </span>
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Right Scroll Chevron for Desktop Mouse Users */}
+                  {isTabsOverflowing && (
+                    <button
+                      type="button"
+                      onClick={() => handleScrollTabs('right')}
+                      className={`flex items-center justify-center w-7 h-7 rounded-full bg-white shadow-md border border-amber-200/90 text-stone-700 hover:text-amber-800 hover:bg-amber-50 shrink-0 z-10 -ms-2.5 transition-all cursor-pointer ${
+                        canScrollTabsRight ? 'opacity-95 hover:opacity-100 hover:scale-105' : 'opacity-30 pointer-events-none'
+                      }`}
+                      title={language === 'ar' ? 'التمرير لليسار' : 'Scroll right'}
+                      aria-label="Scroll tabs right"
+                    >
+                      <ChevronRight className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* ============================================================ */}
+              {/* TAB 1: TICKET VERIFICATION & ENTRANCE CONTROL                */}
+              {/* ============================================================ */}
+              {adminTab === 'verify' && (
+                <div className="space-y-6">
+                  {/* Live Entrance Metrics Dashboard */}
+                  <div className="bg-white p-4 sm:p-5 rounded-2xl border border-stone-200 shadow-xs">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
+                      <div>
+                        <span className="text-xs font-bold text-stone-500 uppercase tracking-wider block">
+                          {t.admissionStats}
+                        </span>
+                        <div className="flex items-baseline gap-2 flex-wrap">
+                          <span className="text-2xl sm:text-3xl font-black text-slate-900">
+                            {admittedGuestsCount}
+                          </span>
+                          <span className="text-xs sm:text-sm font-semibold text-stone-500">
+                            / {totalGuestsCount} {t.guestsCount} ({admittedTicketsCount}/{totalRegistrationsCount} {language === 'ar' ? 'تذاكر' : 'tickets'})
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 sm:flex items-center gap-2 w-full sm:w-auto">
+                        <div className="px-2.5 sm:px-3 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold flex items-center justify-center sm:justify-start gap-1.5 min-w-0">
+                          <UserCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+                          <span className="truncate">{t.passedCount}: {admittedGuestsCount}</span>
+                        </div>
+                        <div className="px-2.5 sm:px-3 py-1.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs font-bold flex items-center justify-center sm:justify-start gap-1.5 min-w-0">
+                          <Clock className="w-4 h-4 text-amber-700 shrink-0" />
+                          <span className="truncate">{t.remainingToEnter}: {pendingGuestsCount}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Progress Bar */}
+                    <div className="w-full bg-stone-100 h-2.5 rounded-full overflow-hidden border border-stone-200">
+                      <div
+                        className="bg-gradient-to-r from-amber-600 to-emerald-600 h-full transition-all duration-500 rounded-full"
+                        style={{ width: `${Math.min(100, admissionPercentage)}%` }}
+                      />
+                    </div>
+                    <div className="flex justify-between items-center text-[11px] text-stone-500 mt-1.5">
+                      <span>{admissionPercentage}% {language === 'ar' ? 'من الحضور اكتمل دخولهم' : 'admitted'}</span>
+                      <span>{t.multiAdminSyncNotice}</span>
+                    </div>
+                  </div>
 
                   {/* Attendees Live Entrance Roster */}
                   <div className="bg-white p-4 sm:p-5 rounded-2xl border border-stone-200 shadow-xs space-y-4">
@@ -2517,88 +2651,21 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
               )}
 
               {/* ============================================================ */}
-              {/* TAB 3: ADMIN CODE GENERATOR (PAID EVENTS)                   */}
+              {/* TAB 3: ADMIN ISSUED CODES LOG (PAID EVENTS)                 */}
               {/* ============================================================ */}
               {adminTab === 'generator' && event.isPaid && event.type !== 'open' && (
                 <div className="space-y-4">
-                  <p className="text-xs text-stone-600 leading-relaxed">
-                    {t.adminReservationDesc}
-                  </p>
-
-                  <form
-                    onSubmit={handleAdminGenerateCode}
-                    className="bg-white p-4 rounded-2xl border border-amber-200 shadow-xs space-y-4 mb-4"
-                  >
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <div>
-                        <label htmlFor={adminNameInputId} className="block text-xs font-bold text-stone-700 mb-1">
-                          {t.attendeeName} *
-                        </label>
-                        <input
-                          id={adminNameInputId}
-                          type="text"
-                          required
-                          value={adminAttendeeName}
-                          onChange={(e) => setAdminAttendeeName(e.target.value)}
-                          placeholder={t.adminNamePlaceholder}
-                          className="w-full px-3 py-2 rounded-xl border border-stone-300 text-xs font-medium text-stone-900 focus:outline-hidden focus:ring-2 focus:ring-amber-600"
-                        />
-                      </div>
-
-                      <div>
-                        <label htmlFor={adminSizeInputId} className="block text-xs font-bold text-stone-700 mb-1">
-                          {t.numberOfPeople} *
-                        </label>
-                        <input
-                          id={adminSizeInputId}
-                          type="number"
-                          min="1"
-                          max="20"
-                          required
-                          value={adminPartySize}
-                          onChange={(e) => setAdminPartySize(Math.max(1, parseInt(e.target.value) || 1))}
-                          className="w-full px-3 py-2 rounded-xl border border-stone-300 text-xs font-medium text-stone-900 focus:outline-hidden focus:ring-2 focus:ring-amber-600"
-                        />
-                      </div>
-                    </div>
-
-                    <button
-                      id="admin-generate-code-submit-btn"
-                      type="submit"
-                      className="w-full py-2.5 px-3 rounded-xl text-xs sm:text-sm font-bold bg-slate-900 hover:bg-slate-800 text-white transition-colors cursor-pointer flex items-center justify-center gap-2 shrink-0 whitespace-normal text-center"
-                    >
-                      <KeyRound className="w-4 h-4 text-amber-400 shrink-0" />
-                      <span>{t.generateCodeBtn}</span>
-                    </button>
-                  </form>
-
-                  {/* Display Newly Generated Code */}
-                  {justGeneratedCode && (
-                    <div className="p-4 rounded-2xl bg-gradient-to-r from-amber-600 to-amber-700 text-white shadow-md animate-in zoom-in-95 duration-200">
-                      <div className="flex items-center justify-between mb-1 gap-2">
-                        <span className="text-xs font-semibold text-amber-100">{t.generatedCodeIs}</span>
-                        <button
-                          type="button"
-                          onClick={() => copyToClipboard(justGeneratedCode.code)}
-                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white/20 hover:bg-white/30 text-xs font-bold cursor-pointer transition-colors shrink-0"
-                        >
-                          {copiedCode ? <Check className="w-3.5 h-3.5 shrink-0" /> : <Copy className="w-3.5 h-3.5 shrink-0" />}
-                          <span>{copiedCode ? t.copiedText : t.copyText}</span>
-                        </button>
-                      </div>
-                      <div className="text-2xl sm:text-3xl font-extrabold tracking-widest font-mono text-white select-all my-1">
-                        {justGeneratedCode.code}
-                      </div>
-                      <p className="text-xs text-amber-100/90 leading-relaxed">{t.codeInstructions}</p>
-                    </div>
-                  )}
-
                   {/* Admin Generated Codes Log */}
-                  {eventCodes.length > 0 && (
-                    <div className="mt-5 pt-4 border-t border-amber-200">
-                      <h4 className="text-xs font-bold text-stone-700 mb-2">
-                        {t.issuedCodesTitle}
-                      </h4>
+                  {eventCodes.length > 0 ? (
+                    <div>
+                      <div className="flex items-center justify-between mb-3">
+                        <h4 className="text-xs font-bold text-stone-700">
+                          {t.issuedCodesTitle} ({eventCodes.length})
+                        </h4>
+                        <span className="text-[11px] text-stone-500 font-medium">
+                          {eventCodes.filter((c) => !c.claimed).length} {t.codeAvailable} &bull; {eventCodes.filter((c) => c.claimed).length} {t.codeClaimed}
+                        </span>
+                      </div>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                         {eventCodes.map((codeItem) => (
                           <div
@@ -2623,6 +2690,17 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
                           </div>
                         ))}
                       </div>
+                    </div>
+                  ) : (
+                    <div className="p-8 text-center bg-white rounded-2xl border border-stone-200">
+                      <KeyRound className="w-8 h-8 text-stone-400 mx-auto mb-2 opacity-50" />
+                      <p className="text-xs text-stone-500">
+                        {language === 'ar'
+                          ? 'لا توجد رموز حجز مصدرة بعد. يمكنك توليد الرموز مباشرة من قسم التسجيل بالأعلى.'
+                          : language === 'fr'
+                          ? 'Aucun code émis pour le moment. Vous pouvez générer les codes directement dans la section inscription en haut.'
+                          : 'No reservation codes issued yet. You can generate codes directly in the Registration section above.'}
+                      </p>
                     </div>
                   )}
                 </div>
